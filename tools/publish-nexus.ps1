@@ -32,12 +32,11 @@ param(
     # Nexus game domain, as it appears in the site URL.
     [string]$Game = "valheim",
 
-    # The mod id from the site URL: nexusmods.com/valheim/mods/3681
-    # No default on purpose. 3685 is Safe Stamina's page, and inheriting it here would
-    # upload this mod's files onto that mod. Nexus has no API to create a mod page, so the
-    # first release is uploaded by hand on the site; put the id it gives you here after.
-    [Parameter(Mandatory = $true)]
-    [string]$ModId,
+    # The mod id from the site URL: nexusmods.com/valheim/mods/3888. Nexus has no API to
+    # create a mod page, so 1.0.0 was uploaded by hand on the site and this is the id it
+    # gave back. It is this mod's page and nothing else's - do not copy this line into
+    # another mod's script without changing it, or that mod's files land here.
+    [string]$ModId = "3888",
 
     # Which of the mod's files this is a new version of. Matched on name.
     # The page's file carries its version in its name, so this is the PREVIOUS release's

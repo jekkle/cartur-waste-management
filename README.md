@@ -68,8 +68,9 @@ powershell -ExecutionPolicy Bypass -File tools\pack.ps1
 powershell -ExecutionPolicy Bypass -File tools\releasecheck.ps1
 powershell -ExecutionPolicy Bypass -File tools\publish.ps1 -WhatIf
 powershell -ExecutionPolicy Bypass -File tools\publish.ps1
-powershell -ExecutionPolicy Bypass -File tools\publish-nexus.ps1 -ModId <id>
+powershell -ExecutionPolicy Bypass -File tools\publish-nexus.ps1
 ```
 
-Nexus has no API to create a mod page, so the first release is uploaded by hand
-on the site; `-ModId` takes the id it gives back, for every version after.
+Nexus has no API to create a mod page, so 1.0.0 was uploaded by hand on the
+site. It is mod 3888, and that id is now the default in `publish-nexus.ps1`, so
+every version after goes up with the rest.
