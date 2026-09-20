@@ -1,0 +1,16 @@
+**/bin/
+**/obj/
+*.user
+*.suo
+.vs/
+*.dll
+*.pdb
+*.log
+dist/
+package/plugins/
+*.zip
+__pycache__/
+*.pyc
+dist/
+package/plugins/
+tools/art/out/

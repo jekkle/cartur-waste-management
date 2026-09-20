@@ -1,0 +1,9 @@
+{
+  "name": "Carturs_Waste_Management",
+  "version_number": "1.0.0",
+  "website_url": "https://github.com/jekkle/cartur-waste-management",
+  "description": "A trash can and a sort button in the inventory. Drop an item on the can and it gives back what the bench charged for it. Sort tidies the bag or the open chest and pours split stacks back together.",
+  "dependencies": [
+    "denikson-BepInExPack_Valheim-5.4.2333"
+  ]
+}
