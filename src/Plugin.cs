@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
@@ -10,8 +11,8 @@ using UnityEngine.UI;
 
 namespace CarturWasteManagement
 {
-    // Drop an item on the can and it goes back to what it was made of. Valheim already knows
-    // the answer: ObjectDB.GetRecipe(item) is the same recipe the crafting bench used, and
+    // Drop an item on the can and half of what it cost comes back. Valheim already knows the
+    // bill: ObjectDB.GetRecipe(item) is the same recipe the crafting bench used, and
     // Requirement.GetAmount(quality) is what that bench charged. Anything with no recipe -
     // wood, stone, ore, a berry - has nothing to give back, so it is simply removed.
     //
@@ -256,8 +257,10 @@ namespace CarturWasteManagement
         }
 
         // The recipe is the receipt. One craft of recipe.m_amount items cost m_resources, so
-        // amount/m_amount whole crafts are what can honestly be given back; a leftover that does
-        // not make a whole craft returns nothing, the same way the bench never sold a half one.
+        // amount/m_amount whole crafts are what was paid; a leftover that does not make a whole
+        // craft returns nothing, the same way the bench never sold a half one. Half of that bill
+        // comes back - scrapping is meant to cost something - and the half rounds up, so an
+        // ingredient that was genuinely used never pays out nothing.
         private static void Recycle(Player player, Inventory from, ItemDrop.ItemData item, int amount)
         {
             Recipe recipe = ObjectDB.instance != null ? ObjectDB.instance.GetRecipe(item) : null;
@@ -266,7 +269,6 @@ namespace CarturWasteManagement
 
             if (crafts > 0)
             {
-                Inventory to = player.GetInventory();
                 foreach (Piece.Requirement req in recipe.m_resources)
                 {
                     // m_recover is the game's own flag for "this comes back out again" - it is
@@ -274,17 +276,16 @@ namespace CarturWasteManagement
                     if (req == null || req.m_resItem == null || !req.m_recover)
                         continue;
 
-                    int give = req.GetAmount(item.m_quality) * crafts;
+                    int give = Half(req.GetAmount(item.m_quality) * crafts);
                     if (give <= 0)
                         continue;
 
-                    string prefab = req.m_resItem.gameObject.name;
-                    if (!to.AddItem(req.m_resItem.gameObject, give))
-                        ItemDrop.DropItem(req.m_resItem.m_itemData, give, player.transform.position + player.transform.forward, Quaternion.identity);
-
-                    Plugin.Log.LogDebug($"returned {give} {prefab}");
+                    Give(player, req.m_resItem.gameObject, give);
+                    Plugin.Log.LogDebug($"returned {give} {req.m_resItem.gameObject.name}");
                 }
             }
+
+            GiveEpicLootRefund(player, item, amount);
 
             if (item.m_equipped)
                 player.UnequipItem(item, false);
@@ -293,6 +294,110 @@ namespace CarturWasteManagement
                 from.RemoveItem(item);
             else
                 from.RemoveItem(item, amount);
+        }
+
+        // Half, rounded up: 5 becomes 3, 1 stays 1. Nothing that was paid for comes back as
+        // nothing, which rounding down would do to every single-unit ingredient.
+        private static int Half(int n) => (n + 1) / 2;
+
+        // Into the bag, or at the player's feet when it will not fit. Both the recipe refund
+        // and the enchant refund hand out items this way.
+        private static void Give(Player player, GameObject prefab, int amount)
+        {
+            if (player.GetInventory().AddItem(prefab, amount))
+                return;
+
+            ItemDrop drop = prefab.GetComponent<ItemDrop>();
+            if (drop != null)
+                ItemDrop.DropItem(drop.m_itemData, amount, player.transform.position + player.transform.forward, Quaternion.identity);
+        }
+
+        // EpicLoot items pay a second time, on top of the recipe, and which bill they pay
+        // depends on whether anyone ever enchanted them.
+        //
+        // An enchanted item cost materials at the enchanting table, so half of that comes back:
+        // EnchantCostsHelper.GetEnchantCost(item, rarity) is the list the table charged.
+        //
+        // Everything else EpicLoot will sacrifice never cost anything to make - a trophy, a boss
+        // drop, an unidentified item - so half of nothing is nothing, and instead they pay
+        // EpicLoot's own GetSacrificeProducts, unhalved. That is the table the player already
+        // knows from the enchanting UI, and it is EpicLoot's number, not ours.
+        //
+        // All of it by reflection: EpicLoot is a soft dependency with no build reference. Every
+        // lookup below is null when it is not installed, and then this does nothing at all.
+        private static readonly Type RarityType = AccessTools.TypeByName("EpicLoot.ItemRarity");
+        private static readonly MethodInfo EnchantCostFor = RarityType == null ? null :
+            AccessTools.Method(AccessTools.TypeByName("EpicLoot.Crafting.EnchantCostsHelper"),
+                               "GetEnchantCost", new[] { typeof(ItemDrop.ItemData), RarityType });
+        private static readonly MethodInfo SacrificeProductsFor =
+            AccessTools.Method(AccessTools.TypeByName("EpicLoot.Crafting.EnchantCostsHelper"),
+                               "GetSacrificeProducts", new[] { typeof(ItemDrop.ItemData) });
+        private static readonly MethodInfo IsMagicItem =
+            AccessTools.Method(AccessTools.TypeByName("EpicLoot.API"), "IsMagicItem", new[] { typeof(ItemDrop.ItemData) });
+        private static readonly MethodInfo TryGetRarity =
+            AccessTools.Method(AccessTools.TypeByName("EpicLoot.API"), "TryGetRarity",
+                               new[] { typeof(ItemDrop.ItemData), typeof(int).MakeByRefType() });
+        private static readonly FieldInfo CostItem =
+            AccessTools.Field(AccessTools.TypeByName("EpicLoot.Crafting.ItemAmountConfig"), "Item");
+        private static readonly FieldInfo CostAmount =
+            AccessTools.Field(AccessTools.TypeByName("EpicLoot.Crafting.ItemAmountConfig"), "Amount");
+
+        private static void GiveEpicLootRefund(Player player, ItemDrop.ItemData item, int amount)
+        {
+            if (EnchantCostFor == null || SacrificeProductsFor == null || IsMagicItem == null
+                || TryGetRarity == null || CostItem == null || CostAmount == null)
+                return;
+
+            IEnumerable bill;
+            bool halve;
+            try
+            {
+                halve = IsMagicItem.Invoke(null, new object[] { item }) is bool magic && magic;
+                if (halve)
+                {
+                    var args = new object[] { item, 0 };
+                    if (!(TryGetRarity.Invoke(null, args) is bool found) || !found)
+                        return;
+
+                    object rarity = Enum.ToObject(RarityType, args[1]);
+                    bill = EnchantCostFor.Invoke(null, new[] { item, rarity }) as IEnumerable;
+                }
+                else
+                {
+                    // Null here is EpicLoot saying it will not sacrifice this item at all.
+                    bill = SacrificeProductsFor.Invoke(null, new object[] { item }) as IEnumerable;
+                }
+            }
+            catch (Exception e)
+            {
+                // Somebody else's mod, called across a version boundary we do not control. A
+                // throw here must not eat the item the player just dropped on the can.
+                Plugin.Log.LogWarning("EpicLoot cost lookup threw, no magic materials given. " + e.Message);
+                return;
+            }
+
+            if (bill == null)
+                return;
+
+            foreach (object entry in bill)
+            {
+                string prefabName = CostItem.GetValue(entry) as string;
+                int give = (CostAmount.GetValue(entry) is int n ? n : 0) * amount;
+                if (halve)
+                    give = Half(give);
+                if (give <= 0 || string.IsNullOrEmpty(prefabName))
+                    continue;
+
+                GameObject prefab = ObjectDB.instance != null ? ObjectDB.instance.GetItemPrefab(prefabName) : null;
+                if (prefab == null)
+                {
+                    Plugin.Log.LogWarning("EpicLoot material is not in the ObjectDB: " + prefabName);
+                    continue;
+                }
+
+                Give(player, prefab, give);
+                Plugin.Log.LogDebug($"refunded {give} {prefabName}");
+            }
         }
 
         /// <summary>
@@ -377,6 +482,10 @@ namespace CarturWasteManagement
             if (inv == null)
                 return;
 
+            // Gather first, then merge, then lay out - so a stack brought in from next door is
+            // poured into the partial stack already here rather than sitting beside it.
+            GatherLikeItems(container, inv);
+
             var items = new List<ItemDrop.ItemData>(inv.GetAllItems());
             MergeStacks(inv, items);
             items.Sort(Compare);
@@ -386,6 +495,103 @@ namespace CarturWasteManagement
                 items[i].m_gridPos = new Vector2i(i % width, i / width);
 
             NotifyChanged(inv);
+        }
+
+        // Container.Save, CheckAccess and m_wagon are all private. Cached once, null-checked at
+        // the call, the same way this file already reaches InventoryGui.m_currentContainer.
+        private static readonly MethodInfo ContainerSave = AccessTools.Method(typeof(Container), "Save");
+        private static readonly MethodInfo ContainerCheckAccess = AccessTools.Method(typeof(Container), "CheckAccess");
+        private static readonly FieldInfo ContainerWagon = AccessTools.Field(typeof(Container), "m_wagon");
+
+        // How far Sort reaches for matching items. The same 20m Craft From Containers calls
+        // "nearby", so the two features agree about which chests are part of this base.
+        private const float GatherRange = 20f;
+
+        /// <summary>
+        /// Pulls matching items in from the chests around this one.
+        ///
+        /// Only item types this chest already holds: a chest of ores stays a chest of ores and
+        /// gains the ore lying in its neighbours, rather than becoming a bin for everything in
+        /// range. That is the difference between tidying and hoarding.
+        ///
+        /// Whole stacks only. A stack that will not fit entirely is left where it is instead of
+        /// being split, so a sort never leaves a torn remainder in the chest next door.
+        /// </summary>
+        private static void GatherLikeItems(Container target, Inventory inv)
+        {
+            var wanted = new HashSet<string>(StringComparer.Ordinal);
+            foreach (ItemDrop.ItemData item in inv.GetAllItems())
+                if (item?.m_shared != null)
+                    wanted.Add(item.m_shared.m_name);
+
+            if (wanted.Count == 0 || Game.instance == null)
+                return;
+
+            long playerId = Game.instance.GetPlayerProfile().GetPlayerID();
+            Vector3 at = target.transform.position;
+            float rangeSq = GatherRange * GatherRange;
+            int moved = 0;
+
+            // No registry to consult and none worth keeping: this runs on a button press, not per
+            // frame, so the scene query is paid once by the click that asked for it.
+            foreach (Container other in UnityEngine.Object.FindObjectsByType<Container>(FindObjectsSortMode.None))
+            {
+                if (other == null || other == target || !Reachable(other, at, rangeSq, playerId))
+                    continue;
+
+                Inventory from = other.GetInventory();
+                if (from == null)
+                    continue;
+
+                bool took = false;
+                foreach (ItemDrop.ItemData item in new List<ItemDrop.ItemData>(from.GetAllItems()))
+                {
+                    if (item?.m_shared == null || !wanted.Contains(item.m_shared.m_name))
+                        continue;
+                    if (!inv.CanAddItem(item, item.m_stack))
+                        continue;
+
+                    inv.MoveItemToThis(from, item);
+                    took = true;
+                    moved++;
+                }
+
+                if (!took)
+                    continue;
+
+                // The chest that gave items up has to be written back and redrawn too, or its
+                // contents come back the next time anyone opens it.
+                ContainerSave?.Invoke(other, null);
+                NotifyChanged(from);
+            }
+
+            if (moved > 0)
+                Plugin.Log.LogInfo($"sort gathered {moved} stack(s) into {Utils.GetPrefabName(target.gameObject)}.");
+        }
+
+        private static bool Reachable(Container other, Vector3 at, float rangeSq, long playerId)
+        {
+            if ((other.transform.position - at).sqrMagnitude > rangeSq)
+                return false;
+
+            // Somebody else has it open, or it is a cart being pulled - either way its contents
+            // are in use and moving them out from under the user desyncs their panel.
+            if (other.IsInUse() && !other.IsOwner())
+                return false;
+            if (ContainerWagon?.GetValue(other) is Vagon wagon && wagon.InUse())
+                return false;
+
+            // A chest carried by a player is not part of the base, and a ward that refuses the
+            // player refuses the sort.
+            if (other.GetComponentInParent<Player>() != null)
+                return false;
+
+            // A lookup that stops resolving must not quietly hand out everyone's chests, so a
+            // missing CheckAccess counts as no access.
+            if (!(ContainerCheckAccess?.Invoke(other, new object[] { playerId }) is bool allowed) || !allowed)
+                return false;
+
+            return PrivateArea.CheckAccess(other.transform.position, 0f, false, true);
         }
 
         /// <summary>

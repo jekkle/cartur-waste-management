@@ -16,10 +16,22 @@ once and reuses them. Everything else is ordinary UI and inventory work.
   including under a UI overhaul that moved it. Clicking it reads the cursor's
   `m_dragItem` / `m_dragInventory` / `m_dragAmount` (all private) and recycles
   that many.
-- **The refund** is `ObjectDB.GetRecipe(item)` — the same recipe the bench
-  used — paying `Requirement.GetAmount(quality)` per whole craft and skipping
-  requirements the game itself marks `m_recover = false`. Partial crafts pay
-  nothing. Items with no recipe are removed.
+- **The refund is half.** `ObjectDB.GetRecipe(item)` is the same recipe the
+  bench used, and `Requirement.GetAmount(quality)` is what that bench charged
+  per whole craft, skipping requirements the game itself marks
+  `m_recover = false`. Half of that bill comes back, rounded up, so a single
+  unit of an ingredient still returns one. Partial crafts pay nothing. Items
+  with no recipe are removed.
+- **EpicLoot's materials** are a second payout on top of the recipe, when that
+  mod is present, and which bill an item pays depends on whether it was ever
+  enchanted. An enchanted item pays half of
+  `EnchantCostsHelper.GetEnchantCost(item, rarity)` — the list the enchanting
+  table charged. Everything else EpicLoot will sacrifice never cost anything
+  to make, so half of nothing is nothing: trophies, boss drops and
+  unidentified items pay `GetSacrificeProducts` instead, unhalved, which is
+  EpicLoot's own table and the one the player already knows from its
+  enchanting UI. Reached by reflection; there is no build reference and
+  nothing happens when EpicLoot is absent.
 - **The two Sort buttons** are clones of the container's Take All button, so
   they carry the game's skin, hover tint and click sound with no art of ours.
   The player one sits under the can; the container one takes Place Stacks'
