@@ -22,7 +22,7 @@ namespace CarturWasteManagement
     {
         public const string PluginGuid = "com.jekkle.valheim.carturwastemanagement";
         public const string PluginName = "Cartur's Waste Management";
-        public const string PluginVersion = "1.0.0";
+        public const string PluginVersion = "1.1.0";
 
         internal static Sprite CanSprite;
         internal static BepInEx.Logging.ManualLogSource Log;
@@ -35,7 +35,7 @@ namespace CarturWasteManagement
             try
             {
                 Harmony.CreateAndPatchAll(typeof(Plugin).Assembly, PluginGuid);
-                Logger.LogInfo($"{PluginName} {PluginVersion} loaded - trash can recycles through the item's own recipe, sort button added.");
+                Logger.LogInfo($"{PluginName} {PluginVersion} loaded - trash can refunds half the item's own recipe, sort button added.");
             }
             catch (Exception e)
             {

@@ -11,13 +11,21 @@ A trash can and a sort button, in the inventory, where the mess is.
 Pick an item up and click the can. It comes apart into what it was made of and the
 parts land in your bag.
 
-The refund is the item's own recipe — the same one the bench used to build it. One
-whole craft returns one whole craft's materials; a leftover that doesn't make a
-full craft returns nothing. Quality is paid for, so a level 3 sword gives back more
-than a level 1.
+The refund is the item's own recipe — the same one the bench used to build it —
+and you get **half of it back, rounded up**. Scrapping should cost you something,
+and rounding up means a single unit of an ingredient still returns one rather than
+nothing. A leftover that doesn't make a full craft returns nothing. Quality is paid
+for, so a level 3 sword gives back more than a level 1.
 
 Anything with no recipe — wood, stone, ore, a handful of raspberries — has nothing
 to give back, so it is simply thrown away.
+
+**EpicLoot is paid too, when it's installed.** An enchanted item was charged
+materials at the enchanting table, so half of that bill comes back on top of the
+recipe. Anything else EpicLoot would sacrifice — a trophy, a boss drop, an
+unidentified item — never cost anything to make, so those pay EpicLoot's own
+sacrifice table instead, unhalved: the same numbers its enchanting UI already
+shows you. Reached by reflection, so nothing happens when EpicLoot is absent.
 
 **The can destroys things, and there is no undo.** That is what it is for.
 

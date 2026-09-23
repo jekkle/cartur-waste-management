@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.0
+
+- **The refund is half now, rounded up.** 1.0.0 returned a whole craft's materials,
+  which made the can a free undo button. Half of the recipe comes back instead, and
+  rounding up means a single-unit ingredient still pays one rather than nothing.
+- **EpicLoot items pay a second time, on top of the recipe.** An enchanted item was
+  charged materials at the enchanting table, so half of `GetEnchantCost` comes back.
+  Anything else EpicLoot will sacrifice - a trophy, a boss drop, an unidentified item -
+  never cost anything to make, so half of nothing is nothing; those pay
+  `GetSacrificeProducts` unhalved instead, which is EpicLoot's own table and the number
+  the player already sees in its enchanting UI. All of it by reflection: EpicLoot is a
+  soft dependency with no build reference, every lookup is null when it is absent, and
+  the whole path is skipped.
+
 ## 1.0.0
 
 First release.
