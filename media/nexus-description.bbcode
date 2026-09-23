@@ -26,7 +26,20 @@ Your hotbar row is never touched. Neither is anything living in an equipment or 
 
 [size=4][b]Config[/b][/size]
 
-None. Nothing in here needed a setting.
+BepInEx/config/com.jekkle.valheim.carturwastemanagement.cfg, written on first run.
+
+[list]
+[*][b]ShowTrashCan[/b] (default true) - show the can in the player panel.[/*]
+[*][b]ShowBagSort[/b] (default true) - show the Sort button for your own bag.[/*]
+[*][b]ShowChestSort[/b] (default true) - show the Sort button for the open chest.[/*]
+[*][b]TrashCanOffset[/b] (0, 0) - nudge the can, in UI pixels. X is right, Y is up.[/*]
+[*][b]BagSortOffset[/b] (0, 0) - nudge the bag Sort button.[/*]
+[*][b]ChestSortOffset[/b] (0, 0) - nudge the chest Sort button.[/*]
+[/list]
+
+All six are read each time the panel opens, so a change takes effect the next time you open your inventory - no restart.
+
+The chest Sort button sits directly under Place Stacks, which is a column other mods build into as well. ChestSortOffset moves it out of the way and ShowChestSort removes it. That is an offset you set rather than a collision test on purpose: finding another mod's button means guessing at its rect and re-checking whenever it moves, and a number typed once cannot be wrong.
 
 [size=4][b]Compatibility[/b][/size]
 

@@ -1,8 +1,8 @@
 {
   "name": "Carturs_Waste_Management",
-  "version_number": "1.1.0",
+  "version_number": "1.2.0",
   "website_url": "https://github.com/jekkle/cartur-waste-management",
-  "description": "A trash can and a sort button in the inventory. Drop an item on the can and it gives back half of what the bench charged for it, EpicLoot's enchanting materials included. Sort tidies the bag or the open chest and pours split stacks back together.",
+  "description": "A trash can and a sort button in the inventory. Drop an item on the can and it gives back half of what the bench charged for it, EpicLoot's enchanting materials included. Sort tidies the bag or the open chest and pours split stacks back together. Every button can be moved or turned off.",
   "dependencies": [
     "denikson-BepInExPack_Valheim-5.4.2333"
   ]

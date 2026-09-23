@@ -43,7 +43,25 @@ quick-slot row added by another mod.
 
 ## Settings
 
-None. Nothing in here needed one.
+`BepInEx/config/com.jekkle.valheim.carturwastemanagement.cfg`.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `ShowTrashCan` | true | Show the can in the player panel. |
+| `ShowBagSort` | true | Show the Sort button for your own bag. |
+| `ShowChestSort` | true | Show the Sort button for the open chest. |
+| `TrashCanOffset` | 0, 0 | Nudge the can, in UI pixels. X right, Y up. |
+| `BagSortOffset` | 0, 0 | Nudge the bag Sort button. |
+| `ChestSortOffset` | 0, 0 | Nudge the chest Sort button. |
+
+All six are read each time the panel opens, so a change takes effect the next time you
+open your inventory. No restart.
+
+The chest Sort button sits directly under Place Stacks, which is a column other mods
+build into as well. `ChestSortOffset` moves it out of the way, and `ShowChestSort`
+removes it. That is an offset you set rather than a collision test on purpose: finding
+another mod's button means guessing at its rect and re-checking whenever it moves, and a
+number typed once cannot be wrong.
 
 ## Install
 

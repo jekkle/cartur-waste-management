@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -22,15 +22,43 @@ namespace CarturWasteManagement
     {
         public const string PluginGuid = "com.jekkle.valheim.carturwastemanagement";
         public const string PluginName = "Cartur's Waste Management";
-        public const string PluginVersion = "1.1.0";
+        public const string PluginVersion = "1.2.0";
 
         internal static Sprite CanSprite;
         internal static BepInEx.Logging.ManualLogSource Log;
+
+        internal static BepInEx.Configuration.ConfigEntry<bool> ShowTrashCan;
+        internal static BepInEx.Configuration.ConfigEntry<bool> ShowBagSort;
+        internal static BepInEx.Configuration.ConfigEntry<bool> ShowChestSort;
+        internal static BepInEx.Configuration.ConfigEntry<Vector2> TrashCanOffset;
+        internal static BepInEx.Configuration.ConfigEntry<Vector2> BagSortOffset;
+        internal static BepInEx.Configuration.ConfigEntry<Vector2> ChestSortOffset;
 
         private void Awake()
         {
             Log = Logger;
             CanSprite = LoadSprite("trashcan_128.png");
+
+            // Asked for: the chest Sort button is put directly under Place Stacks, which is a
+            // column other mods also build into, and there was no way to move it or turn it off.
+            // Deliberately an offset you set rather than a collision test: finding another mod's
+            // button means guessing at its RectTransform and re-checking whenever it moves, and
+            // a number typed once cannot be wrong.
+            //
+            // All six are read every time the panel opens, so changing one takes effect the next
+            // time you open your inventory - no restart.
+            ShowTrashCan = Config.Bind("Buttons", "ShowTrashCan", true,
+                "Show the trash can in the player panel.");
+            ShowBagSort = Config.Bind("Buttons", "ShowBagSort", true,
+                "Show the Sort button under the trash can, for your own bag.");
+            ShowChestSort = Config.Bind("Buttons", "ShowChestSort", true,
+                "Show the Sort button under Place Stacks, for the open chest.");
+            TrashCanOffset = Config.Bind("Buttons", "TrashCanOffset", Vector2.zero,
+                "Nudge the trash can from where it normally sits, in UI pixels. X is right, Y is up.");
+            BagSortOffset = Config.Bind("Buttons", "BagSortOffset", Vector2.zero,
+                "Nudge the bag Sort button, in UI pixels. X is right, Y is up.");
+            ChestSortOffset = Config.Bind("Buttons", "ChestSortOffset", Vector2.zero,
+                "Nudge the chest Sort button, in UI pixels. X is right, Y is up. Use this when another mod already owns the space under Place Stacks.");
 
             try
             {
@@ -94,17 +122,27 @@ namespace CarturWasteManagement
         private static GameObject s_sort;
         private static GameObject s_containerSort;
 
+        /// Where each button was put before any offset was applied. Kept so the offset is always
+        /// measured from the same place: adding it to the button's current position instead would
+        /// move it again every time the panel opened.
+        private static Vector2 s_canHome, s_sortHome, s_containerSortHome;
+
         private static void Postfix(InventoryGui __instance)
         {
             if (__instance == null)
                 return;
 
             BuildContainerSort(__instance);
+            BuildPlayerButtons(__instance);
+            ApplySettings();
+        }
 
-            if (s_can != null || __instance.m_weight == null)
+        private static void BuildPlayerButtons(InventoryGui gui)
+        {
+            if (s_can != null || gui.m_weight == null)
                 return;
 
-            RectTransform weight = __instance.m_weight.rectTransform;
+            RectTransform weight = gui.m_weight.rectTransform;
             RectTransform parent = weight.parent as RectTransform;
             if (parent == null)
                 return;
@@ -113,8 +151,30 @@ namespace CarturWasteManagement
             float sortY = weight.anchoredPosition.y + ButtonHeight + Gap;
             float canY = sortY + ButtonHeight * 0.5f + CanSize * 0.5f + Gap;
 
-            s_can = BuildCan(parent, new Vector2(weight.anchoredPosition.x, canY));
-            s_sort = BuildSort(__instance, parent, new Vector2(weight.anchoredPosition.x, sortY));
+            s_canHome = new Vector2(weight.anchoredPosition.x, canY);
+            s_sortHome = new Vector2(weight.anchoredPosition.x, sortY);
+
+            s_can = BuildCan(parent, s_canHome);
+            s_sort = BuildSort(gui, parent, s_sortHome);
+        }
+
+        /// Shows, hides and positions all three buttons from the config, every time the panel
+        /// opens. Doing it here rather than at build time is what makes the settings live: the
+        /// buttons are built once and reused, so a value read only at build time would need a
+        /// restart to take effect.
+        private static void ApplySettings()
+        {
+            Place(s_can, s_canHome, Plugin.ShowTrashCan.Value, Plugin.TrashCanOffset.Value);
+            Place(s_sort, s_sortHome, Plugin.ShowBagSort.Value, Plugin.BagSortOffset.Value);
+            Place(s_containerSort, s_containerSortHome, Plugin.ShowChestSort.Value, Plugin.ChestSortOffset.Value);
+        }
+
+        private static void Place(GameObject go, Vector2 home, bool show, Vector2 offset)
+        {
+            if (go == null)
+                return;
+            go.SetActive(show);
+            ((RectTransform)go.transform).anchoredPosition = home + offset;
         }
 
         /// <summary>
@@ -145,7 +205,8 @@ namespace CarturWasteManagement
             rect.anchorMax = stackAll.anchorMax;
             rect.pivot = stackAll.pivot;
             rect.sizeDelta = stackAll.sizeDelta;
-            rect.anchoredPosition = stackAll.anchoredPosition - new Vector2(0f, stackAll.rect.height + Gap);
+            s_containerSortHome = stackAll.anchoredPosition - new Vector2(0f, stackAll.rect.height + Gap);
+            rect.anchoredPosition = s_containerSortHome;
 
             foreach (TMP_Text label in go.GetComponentsInChildren<TMP_Text>(true))
                 label.text = "Sort";

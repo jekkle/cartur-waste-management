@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.0
+
+- **The buttons can be turned off and moved.** Asked for on Nexus: the chest Sort button is
+  put directly under Place Stacks, which is a column other mods build into as well, and there
+  was no way to shift it or remove it. Six settings in a new `Buttons` section - `ShowTrashCan`,
+  `ShowBagSort`, `ShowChestSort`, and an offset in UI pixels for each of the three.
+- All six are read every time the inventory opens, so a change takes effect the next time you
+  open it. No restart.
+- An offset you set rather than a collision test on purpose: finding another mod's button means
+  guessing at its rect and re-checking it whenever that mod moves, while a number typed once
+  cannot be wrong.
+
 ## 1.1.0
 
 - **The refund is half now, rounded up.** 1.0.0 returned a whole craft's materials,
