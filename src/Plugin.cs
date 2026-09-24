@@ -13,8 +13,9 @@ namespace CarturWasteManagement
 {
     // Drop an item on the can and half of what it cost comes back. Valheim already knows the
     // bill: ObjectDB.GetRecipe(item) is the same recipe the crafting bench used, and
-    // Requirement.GetAmount(quality) is what that bench charged. Anything with no recipe -
-    // wood, stone, ore, a berry - has nothing to give back, so it is simply removed.
+    // Requirement.GetAmount(q) is what it charged for the single step up to quality q, so the
+    // whole bill is those steps added up. Anything with no recipe - wood, stone, ore, a berry -
+    // has nothing to give back, so it is simply removed.
     //
     // Sort sits under the can and orders everything except the hotbar row.
     [BepInPlugin(PluginGuid, PluginName, PluginVersion)]
@@ -327,6 +328,21 @@ namespace CarturWasteManagement
             Recipe recipe = ObjectDB.instance != null ? ObjectDB.instance.GetRecipe(item) : null;
             int perCraft = recipe != null ? Mathf.Max(1, recipe.m_amount) : 0;
             int crafts = recipe != null ? amount / perCraft : 0;
+            int quality = item.m_quality;
+
+            // Take the item out of the bag BEFORE paying for it. Everything below hands control to
+            // code we do not own - ItemDrop.DropItem inside Give, and EpicLoot by reflection - and
+            // when the payout came first a throw in any of it skipped the removal entirely: the
+            // item stayed in the bag, stayed on the cursor, and the materials already handed over
+            // were kept. Clicking again repeated it, which is an item duplication bug. Removing
+            // first makes the worst case a lost refund instead of a free item.
+            if (item.m_equipped)
+                player.UnequipItem(item, false);
+
+            if (amount >= item.m_stack)
+                from.RemoveItem(item);
+            else
+                from.RemoveItem(item, amount);
 
             if (crafts > 0)
             {
@@ -337,7 +353,7 @@ namespace CarturWasteManagement
                     if (req == null || req.m_resItem == null || !req.m_recover)
                         continue;
 
-                    int give = Half(req.GetAmount(item.m_quality) * crafts);
+                    int give = Half(CostUpTo(req, quality) * crafts);
                     if (give <= 0)
                         continue;
 
@@ -347,14 +363,27 @@ namespace CarturWasteManagement
             }
 
             GiveEpicLootRefund(player, item, amount);
+        }
 
-            if (item.m_equipped)
-                player.UnequipItem(item, false);
-
-            if (amount >= item.m_stack)
-                from.RemoveItem(item);
-            else
-                from.RemoveItem(item, amount);
+        // What one craft of this item actually cost, all the way up to the quality it is now.
+        //
+        // Requirement.GetAmount(q) is the price of a SINGLE step, not the running total:
+        // InventoryGui.DoCrafting sets its target quality to 1 for a craft and to
+        // m_craftUpgradeItem.m_quality + 1 for an upgrade, and hands that one number to
+        // Player.ConsumeResources, which charges GetAmount(target) and nothing else. A quality 3
+        // sword was therefore billed GetAmount(1) + GetAmount(2) + GetAmount(3) over three
+        // separate presses. Refunding only GetAmount(3) paid back less for an upgraded item than
+        // for a plain one, because GetAmount(1) is the flat m_amount and the upgrade steps are the
+        // usually-smaller m_amountPerLevel.
+        //
+        // Quality 0 is not a thing the game makes - ItemData starts at 1 - but a modded item at 0
+        // must still be worth its base cost rather than nothing, so the loop runs at least once.
+        private static int CostUpTo(Piece.Requirement req, int quality)
+        {
+            int total = 0;
+            for (int q = 1; q <= Mathf.Max(1, quality); q++)
+                total += req.GetAmount(q);
+            return total;
         }
 
         // Half, rounded up: 5 becomes 3, 1 stays 1. Nothing that was paid for comes back as
@@ -363,14 +392,26 @@ namespace CarturWasteManagement
 
         // Into the bag, or at the player's feet when it will not fit. Both the recipe refund
         // and the enchant refund hand out items this way.
+        //
+        // ItemDrop.DropItem's very first instruction is Instantiate(itemData.m_dropPrefab, ...),
+        // and m_dropPrefab is written in exactly one place: ItemDrop.Awake. The prefab handed in
+        // here comes out of the ObjectDB, which holds prefab assets that are never instantiated,
+        // so their Awake has never run and their m_itemData.m_dropPrefab is null. Passing that
+        // template straight to DropItem instantiated null and threw. Drop a clone with the field
+        // filled in instead - the same GameObject Awake would have looked up - and the clone also
+        // keeps the template's own m_itemData out of the world object's hands.
         private static void Give(Player player, GameObject prefab, int amount)
         {
             if (player.GetInventory().AddItem(prefab, amount))
                 return;
 
             ItemDrop drop = prefab.GetComponent<ItemDrop>();
-            if (drop != null)
-                ItemDrop.DropItem(drop.m_itemData, amount, player.transform.position + player.transform.forward, Quaternion.identity);
+            if (drop == null || drop.m_itemData == null)
+                return;
+
+            ItemDrop.ItemData data = drop.m_itemData.Clone();
+            data.m_dropPrefab = prefab;
+            ItemDrop.DropItem(data, amount, player.transform.position + player.transform.forward, Quaternion.identity);
         }
 
         // EpicLoot items pay a second time, on top of the recipe, and which bill they pay
@@ -395,6 +436,8 @@ namespace CarturWasteManagement
                                "GetSacrificeProducts", new[] { typeof(ItemDrop.ItemData) });
         private static readonly MethodInfo IsMagicItem =
             AccessTools.Method(AccessTools.TypeByName("EpicLoot.API"), "IsMagicItem", new[] { typeof(ItemDrop.ItemData) });
+        private static readonly MethodInfo IsUnidentifiedItem =
+            AccessTools.Method(AccessTools.TypeByName("EpicLoot.API"), "IsUnidentified", new[] { typeof(ItemDrop.ItemData) });
         private static readonly MethodInfo TryGetRarity =
             AccessTools.Method(AccessTools.TypeByName("EpicLoot.API"), "TryGetRarity",
                                new[] { typeof(ItemDrop.ItemData), typeof(int).MakeByRefType() });
@@ -406,14 +449,22 @@ namespace CarturWasteManagement
         private static void GiveEpicLootRefund(Player player, ItemDrop.ItemData item, int amount)
         {
             if (EnchantCostFor == null || SacrificeProductsFor == null || IsMagicItem == null
-                || TryGetRarity == null || CostItem == null || CostAmount == null)
+                || IsUnidentifiedItem == null || TryGetRarity == null || CostItem == null || CostAmount == null)
                 return;
 
             IEnumerable bill;
             bool halve;
             try
             {
-                halve = IsMagicItem.Invoke(null, new object[] { item }) is bool magic && magic;
+                // IsMagicItem is true for anything carrying a MagicItemComponent with a MagicItem
+                // on it, and IsUnidentified reads the IsUnidentified flag off that same object -
+                // so every unidentified drop is also "magic", and was taking the halved
+                // enchant-cost branch below. Nobody ever paid an enchanting table for one, so it
+                // belongs with the trophies in the unhalved sacrifice branch, which is what the
+                // comment above and the README have always said it does.
+                bool magic = IsMagicItem.Invoke(null, new object[] { item }) is bool m && m;
+                bool unidentified = IsUnidentifiedItem.Invoke(null, new object[] { item }) is bool u && u;
+                halve = magic && !unidentified;
                 if (halve)
                 {
                     var args = new object[] { item, 0 };

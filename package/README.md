@@ -14,8 +14,11 @@ parts land in your bag.
 The refund is the item's own recipe — the same one the bench used to build it —
 and you get **half of it back, rounded up**. Scrapping should cost you something,
 and rounding up means a single unit of an ingredient still returns one rather than
-nothing. A leftover that doesn't make a full craft returns nothing. Quality is paid
-for, so a level 3 sword gives back more than a level 1.
+nothing. A leftover that doesn't make a full craft returns nothing.
+
+**Every upgrade you paid for is counted**, not just the last one: a level 3 sword
+was charged for the craft and then again for each step up, so the refund adds all
+of that together and a level 3 always gives back more than a level 1.
 
 Anything with no recipe — wood, stone, ore, a handful of raspberries — has nothing
 to give back, so it is simply thrown away.

@@ -4,7 +4,6 @@
     <TargetFramework>net472</TargetFramework>
     <AssemblyName>CarturWasteManagement</AssemblyName>
     <RootNamespace>CarturWasteManagement</RootNamespace>
-    <Version>1.0.0</Version>
     <LangVersion>latest</LangVersion>
     <RestoreAdditionalProjectSources>https://nuget.bepinex.dev/v3/index.json</RestoreAdditionalProjectSources>
     <VALHEIM_INSTALL Condition="'$(VALHEIM_INSTALL)' == ''">C:\Program Files (x86)\Steam\steamapps\common\Valheim</VALHEIM_INSTALL>

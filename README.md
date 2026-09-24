@@ -17,8 +17,12 @@ once and reuses them. Everything else is ordinary UI and inventory work.
   `m_dragItem` / `m_dragInventory` / `m_dragAmount` (all private) and recycles
   that many.
 - **The refund is half.** `ObjectDB.GetRecipe(item)` is the same recipe the
-  bench used, and `Requirement.GetAmount(quality)` is what that bench charged
-  per whole craft, skipping requirements the game itself marks
+  bench used. `Requirement.GetAmount(q)` is the price of one *step* rather than
+  a running total — `InventoryGui.DoCrafting` targets quality 1 for a craft and
+  `m_quality + 1` for an upgrade, and `Player.ConsumeResources` charges
+  `GetAmount(target)` once — so a quality 3 item was billed
+  `GetAmount(1) + GetAmount(2) + GetAmount(3)` over three presses. The refund
+  adds those steps up, skipping requirements the game itself marks
   `m_recover = false`. Half of that bill comes back, rounded up, so a single
   unit of an ingredient still returns one. Partial crafts pay nothing. Items
   with no recipe are removed.
