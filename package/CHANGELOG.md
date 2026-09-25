@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.1
+
+- **No more losing an item when the bag is full.** The fallback that drops the item on the ground
+  used the raw prefab template, whose drop reference is never populated, so it threw - and because
+  the refund runs before the item is removed, the item stayed in your bag and on the cursor with
+  the materials already paid. Clicking again repeated it.
+- **An upgraded item no longer refunds less than a plain one.** The refund read the cost of the
+  last upgrade step rather than the whole bill. A quality 2 item could hand back less than quality
+  1 despite costing more to make. The steps are summed now.
+- **Unidentified EpicLoot items pay the sacrifice table again.** They were taking the halved
+  enchanting branch, because unidentified items are also magic items, which is what that test
+  asked. Both the readme and the code comment promised otherwise.
 ## 1.2.0
 
 - **The buttons can be turned off and moved.** Asked for on Nexus: the chest Sort button is
