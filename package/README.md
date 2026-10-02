@@ -59,12 +59,19 @@ everything in range. Your bag is the other way round: it fills with what it alre
 has room for.
 
 Chests you have no permission for, chests inside someone else's ward, chests other
-players have open, carts being pulled and containers carried by a player are all left
-alone.
+players have open, and containers carried by a player are all left alone. So are
+boats and carts — a hold is not part of your base, and without that rule a moored
+longship holding a lot of something could win it and pull your stores out onto the
+water.
 
-**Sort All** does not empty a whole base into the chest you are standing at. Each
-chest pulls for itself, so it settles the base rather than collapsing it into one
-pile.
+**Sort All** tidies every chest in range *and* consolidates them. For each kind of
+thing it finds, one chest wins — the one already holding the most of it, and on a
+tie the nearer — and every other copy is pulled into that chest. So two chests of
+rubies end up as one chest of rubies. A chest only ever wins a kind of thing it
+already holds, so a chest of ores still cannot swallow a chest of wood.
+
+What will not fit in the winner is left in the chest it was in. Nothing is thrown
+away, and a base that could not be finished in one press finishes on the next.
 
 ## Settings
 

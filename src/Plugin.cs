@@ -23,7 +23,7 @@ namespace CarturWasteManagement
     {
         public const string PluginGuid = "com.jekkle.valheim.carturwastemanagement";
         public const string PluginName = "Cartur's Waste Management";
-        public const string PluginVersion = "1.2.1";
+        public const string PluginVersion = "1.2.2";
 
         internal static Sprite CanSprite;
         internal static BepInEx.Logging.ManualLogSource Log;
@@ -31,6 +31,8 @@ namespace CarturWasteManagement
         internal static BepInEx.Configuration.ConfigEntry<bool> ShowTrashCan;
         internal static BepInEx.Configuration.ConfigEntry<bool> ShowBagSort;
         internal static BepInEx.Configuration.ConfigEntry<bool> ShowChestSort;
+        internal static BepInEx.Configuration.ConfigEntry<bool> ShowChestSortAll;
+        internal static BepInEx.Configuration.ConfigEntry<float> GatherRange;
         internal static BepInEx.Configuration.ConfigEntry<Vector2> TrashCanOffset;
         internal static BepInEx.Configuration.ConfigEntry<Vector2> BagSortOffset;
         internal static BepInEx.Configuration.ConfigEntry<Vector2> ChestSortOffset;
@@ -54,6 +56,13 @@ namespace CarturWasteManagement
                 "Show the Sort button under the trash can, for your own bag.");
             ShowChestSort = Config.Bind("Buttons", "ShowChestSort", true,
                 "Show the Sort button under Place Stacks, for the open chest.");
+            ShowChestSortAll = Config.Bind("Buttons", "ShowChestSortAll", true,
+                "Show the Sort All button under Sort, for every chest in range.");
+            // The same 20 metres Craft From Containers calls nearby, so the two agree about which
+            // chests are part of a base. Read at click time, so a change takes effect on the next
+            // sort with no restart.
+            GatherRange = Config.Bind("Buttons", "GatherRange", 20f,
+                "How far, in metres, Sort pulls matching items in from nearby chests, and how far Sort All reaches. 0 disables both.");
             TrashCanOffset = Config.Bind("Buttons", "TrashCanOffset", Vector2.zero,
                 "Nudge the trash can from where it normally sits, in UI pixels. X is right, Y is up.");
             BagSortOffset = Config.Bind("Buttons", "BagSortOffset", Vector2.zero,
@@ -122,11 +131,12 @@ namespace CarturWasteManagement
         private static GameObject s_can;
         private static GameObject s_sort;
         private static GameObject s_containerSort;
+        private static GameObject s_containerSortAll;
 
         /// Where each button was put before any offset was applied. Kept so the offset is always
         /// measured from the same place: adding it to the button's current position instead would
         /// move it again every time the panel opened.
-        private static Vector2 s_canHome, s_sortHome, s_containerSortHome;
+        private static Vector2 s_canHome, s_sortHome, s_containerSortHome, s_containerSortAllHome;
 
         private static void Postfix(InventoryGui __instance)
         {
@@ -168,6 +178,7 @@ namespace CarturWasteManagement
             Place(s_can, s_canHome, Plugin.ShowTrashCan.Value, Plugin.TrashCanOffset.Value);
             Place(s_sort, s_sortHome, Plugin.ShowBagSort.Value, Plugin.BagSortOffset.Value);
             Place(s_containerSort, s_containerSortHome, Plugin.ShowChestSort.Value, Plugin.ChestSortOffset.Value);
+            Place(s_containerSortAll, s_containerSortAllHome, Plugin.ShowChestSortAll.Value, Plugin.ChestSortOffset.Value);
         }
 
         private static void Place(GameObject go, Vector2 home, bool show, Vector2 offset)
@@ -179,13 +190,24 @@ namespace CarturWasteManagement
         }
 
         /// <summary>
-        /// The same Sort button for whatever chest is open. Cloned from Take All so it carries
-        /// the game's own skin and click sound, and built once and reused: the container panel
-        /// is the same object for every chest, only its inventory changes.
+        /// Two buttons for the chest panel: Sort for the one that is open, and Sort All for every
+        /// chest in range. Cloned from Take All so they carry the game's own skin and click sound,
+        /// and built once and reused: the container panel is the same object for every chest, only
+        /// its inventory changes.
         ///
-        /// It is placed directly under Place Stacks (InventoryGui.m_stackAllButton) - Cartur's
-        /// call - and takes that button's anchors, pivot and size so it reads as one more button
-        /// in the same stack however the panel has been moved or scaled.
+        /// The pair sits directly under Place Stacks (InventoryGui.m_stackAllButton) - Cartur's
+        /// call - and takes that button's anchors and pivot so it reads as part of the same stack
+        /// however the panel has been moved or scaled.
+        ///
+        /// The two sit side by side on one row: full Place Stacks height, half its width each, so
+        /// the pair covers exactly the footprint of one vanilla button and the column below is
+        /// untouched. Asked for - two stacked half-height buttons were hard to read.
+        ///
+        /// The x offsets are derived from the pivot rather than assumed to be centred. A rect of
+        /// width w at anchoredPosition a has its left edge at a - pivot.x * w, so a half-width
+        /// button lines up with Place Stacks' left edge at -pivot.x * w/2, and the second one
+        /// starts half a button further right. At the usual centre pivot that is the symmetric
+        /// -/+ quarter width; at a left pivot it is 0 and +half. Neither is hardcoded.
         /// </summary>
         private static void BuildContainerSort(InventoryGui gui)
         {
@@ -197,36 +219,64 @@ namespace CarturWasteManagement
             if (stackAll == null)
                 return;
 
+            float height = stackAll.rect.height;
+            float halfWidth = stackAll.rect.width * 0.5f;
+            float shift = stackAll.pivot.x * halfWidth;
+
+            // One full button height below Place Stacks, and both on that same row.
+            Vector2 row = stackAll.anchoredPosition - new Vector2(0f, height + Gap);
+            var size = new Vector2(halfWidth, height);
+
+            s_containerSortHome = row + new Vector2(-shift, 0f);
+            s_containerSortAllHome = row + new Vector2(halfWidth - shift, 0f);
+
+            s_containerSort = MakeContainerButton(gui, stackAll, "CarturSortContainerButton", "Sort",
+                WasteBin.SortOpenContainer, s_containerSortHome, size);
+
+            s_containerSortAll = MakeContainerButton(gui, stackAll, "CarturSortAllContainerButton", "Sort All",
+                WasteBin.SortAllContainers, s_containerSortAllHome, size);
+
+            // The three vanilla buttons' own positions, so where the pair landed can be read
+            // rather than eyeballed - if it sits on top of one of them, this line says so.
+            RectTransform takeAll = gui.m_takeAllButton.GetComponent<RectTransform>();
+            RectTransform drop = gui.m_dropButton != null ? gui.m_dropButton.GetComponent<RectTransform>() : null;
+            Plugin.Log.LogInfo("container sort buttons at " + s_containerSortHome + " and " + s_containerSortAllHome
+                + " size " + ((RectTransform)s_containerSort.transform).rect.size
+                + "  (place stacks " + stackAll.anchoredPosition + " size " + stackAll.rect.size
+                + " anchors " + stackAll.anchorMin + "-" + stackAll.anchorMax
+                + " pivot " + stackAll.pivot
+                + ", take all " + (takeAll != null ? takeAll.anchoredPosition.ToString() : "?")
+                + ", drop " + (drop != null ? drop.anchoredPosition.ToString() : "none") + ")");
+        }
+
+        /// <summary>
+        /// One half-height clone of Take All. The height goes on as a plain positive sizeDelta:
+        /// Place Stacks' anchors are the same point, not stretched, so sizeDelta is the button's
+        /// size outright. Negating it to mean "half a stretched button" only flips the rect and
+        /// draws nothing - which is what 1.2.1 did, and the log line below is what said so.
+        /// </summary>
+        private static GameObject MakeContainerButton(InventoryGui gui, RectTransform stackAll,
+            string name, string caption, UnityEngine.Events.UnityAction onClick, Vector2 home, Vector2 sizeDelta)
+        {
             GameObject go = UnityEngine.Object.Instantiate(gui.m_takeAllButton.gameObject, stackAll.parent);
-            go.name = "CarturSortContainerButton";
+            go.name = name;
             go.SetActive(true);
 
             var rect = (RectTransform)go.transform;
             rect.anchorMin = stackAll.anchorMin;
             rect.anchorMax = stackAll.anchorMax;
             rect.pivot = stackAll.pivot;
-            rect.sizeDelta = stackAll.sizeDelta;
-            s_containerSortHome = stackAll.anchoredPosition - new Vector2(0f, stackAll.rect.height + Gap);
-            rect.anchoredPosition = s_containerSortHome;
+            rect.sizeDelta = sizeDelta;
+            rect.anchoredPosition = home;
 
             foreach (TMP_Text label in go.GetComponentsInChildren<TMP_Text>(true))
-                label.text = "Sort";
+                label.text = caption;
 
             var button = go.GetComponent<Button>();
             button.onClick.RemoveAllListeners();
-            button.onClick.AddListener(WasteBin.SortOpenContainer);
+            button.onClick.AddListener(onClick);
 
-            s_containerSort = go;
-
-            // The three vanilla buttons' own positions, so where Sort landed can be read rather
-            // than eyeballed - if it sits on top of one of them, this line says so.
-            RectTransform takeAll = gui.m_takeAllButton.GetComponent<RectTransform>();
-            RectTransform drop = gui.m_dropButton != null ? gui.m_dropButton.GetComponent<RectTransform>() : null;
-            Plugin.Log.LogInfo("container sort button at " + rect.anchoredPosition
-                + " size " + rect.rect.size
-                + "  (place stacks " + stackAll.anchoredPosition + " size " + stackAll.rect.size
-                + ", take all " + (takeAll != null ? takeAll.anchoredPosition.ToString() : "?")
-                + ", drop " + (drop != null ? drop.anchoredPosition.ToString() : "none") + ")");
+            return go;
         }
 
         private static GameObject BuildCan(RectTransform parent, Vector2 pos)
@@ -301,7 +351,9 @@ namespace CarturWasteManagement
         {
             InventoryGui gui = InventoryGui.instance;
             Player player = Player.m_localPlayer;
-            if (gui == null || player == null)
+            // Same guard the game puts on its own Take All and Place Stacks: the cursor and the
+            // inventory it points at are both live, and a teleport changes what they are.
+            if (gui == null || player == null || player.IsTeleporting())
                 return;
 
             var item = DragItem?.GetValue(gui) as ItemDrop.ItemData;
@@ -402,16 +454,38 @@ namespace CarturWasteManagement
         // keeps the template's own m_itemData out of the world object's hands.
         private static void Give(Player player, GameObject prefab, int amount)
         {
-            if (player.GetInventory().AddItem(prefab, amount))
+            ItemDrop drop = prefab.GetComponent<ItemDrop>();
+            if (amount <= 0 || drop == null || drop.m_itemData == null || drop.m_itemData.m_shared == null)
                 return;
 
-            ItemDrop drop = prefab.GetComponent<ItemDrop>();
-            if (drop == null || drop.m_itemData == null)
+            Inventory inv = player.GetInventory();
+            string name = drop.m_itemData.m_shared.m_name;
+            int max = Mathf.Max(1, drop.m_itemData.m_shared.m_maxStackSize);
+
+            // Handed out one stack at a time, because AddItem(GameObject, int) is not a bulk
+            // call. Read off the DLL, its second instruction block is
+            //   clone.m_stack = Mathf.Min(amount, m_shared.m_maxStackSize)
+            // and everything above that is simply never created. Scrapping 20 bread owes 100
+            // barley flour; one call handed back 50 and the other 50 did not exist.
+            int before = inv.CountItems(name, -1, false);
+            for (int left = amount; left > 0; left -= max)
+            {
+                if (!inv.AddItem(prefab, Mathf.Min(left, max)))
+                    break;
+            }
+
+            // What the bag took is counted, not asked for. AddItem(ItemData) walks the stackable
+            // path one unit at a time, topping up free stacks as it goes, and when it finally
+            // runs out of empty slots it returns false having already placed some of them.
+            // Trusting that false and dropping the full amount at the player's feet handed back
+            // both copies, which is an item duplication bug.
+            int rest = amount - (inv.CountItems(name, -1, false) - before);
+            if (rest <= 0)
                 return;
 
             ItemDrop.ItemData data = drop.m_itemData.Clone();
             data.m_dropPrefab = prefab;
-            ItemDrop.DropItem(data, amount, player.transform.position + player.transform.forward, Quaternion.identity);
+            ItemDrop.DropItem(data, rest, player.transform.position + player.transform.forward, Quaternion.identity);
         }
 
         // EpicLoot items pay a second time, on top of the recipe, and which bill they pay
@@ -537,13 +611,28 @@ namespace CarturWasteManagement
             return inv.GetHeight();
         }
 
+        /// <summary>
+        /// The rows anything may be put into, and the rows worth reading out of.
+        ///
+        /// The layout already stops at the visible rows; the gather did not, and the two have to
+        /// agree. A chest has nothing hidden, so its whole grid counts. The player's does: an
+        /// item dropped into a hidden row is sitting on the equipment panel, is never drawn in
+        /// the grid, is skipped by the layout - which only collects y &lt; visible - and looks to
+        /// the player as though the sort ate it.
+        /// </summary>
+        private static int PlaceableRows(Inventory inv)
+        {
+            Player player = Player.m_localPlayer;
+            return player != null && inv == player.GetInventory() ? VisibleRows(inv) : inv.GetHeight();
+        }
+
         // Row 0 is the hotbar and stays where the player put it; the visible rows below it are
         // grouped by item type, then name, then best quality first. Anything in a hidden row is
         // in a slot, not in the bag, and is left alone.
         internal static void SortPlayerInventory()
         {
             Player player = Player.m_localPlayer;
-            if (player == null)
+            if (player == null || player.IsTeleporting())
                 return;
 
             Inventory inv = player.GetInventory();
@@ -561,6 +650,14 @@ namespace CarturWasteManagement
                     + ")");
             }
 
+            // Top up from the chests around the player first, so a sort with a near-empty grid and
+            // a full ore chest next door both happen on one press. The bag is not a container, so
+            // there is no anchor chest and nothing to skip - the player's own position is the
+            // centre of the walk. Anything it brings lands in the first free slot the game picks,
+            // which can be a hotbar row; the hotbar is left alone by the layout below either way.
+            GatherLikeItems(inv, player.transform.position, null);
+
+            // Collected after the gather, so what arrived is laid out with the rest.
             var loose = new List<ItemDrop.ItemData>();
             foreach (ItemDrop.ItemData item in inv.GetAllItems())
             {
@@ -571,9 +668,17 @@ namespace CarturWasteManagement
             MergeStacks(inv, loose);
             loose.Sort(Compare);
 
+            // The sort can also top the bag up from the chests around it, so the count can exceed
+            // what the visible rows hold. Only the first rows get placed; the rest stay wherever
+            // they are rather than being written to a row the player cannot see, which is the
+            // equipment area and would look like the items had gone.
             int width = inv.GetWidth();
-            for (int i = 0; i < loose.Count; i++)
+            int room = width * (visible - 1);
+            for (int i = 0; i < loose.Count && i < room; i++)
                 loose[i].m_gridPos = new Vector2i(i % width, 1 + i / width);
+
+            if (loose.Count > room)
+                Plugin.Log.LogWarning($"sort placed {room} of {loose.Count} bag stacks; the rest were left where they were.");
 
             NotifyChanged(inv);
         }
@@ -589,23 +694,252 @@ namespace CarturWasteManagement
             if (gui == null || !gui.IsContainerOpen())
                 return;
 
+            // The game guards its own Take All and Place Stacks the same way: a panel change or a
+            // container swap landing mid-click is what the copy is for. Read from OnTakeAll.
+            Player player = Player.m_localPlayer;
+            if (player == null || player.IsTeleporting())
+                return;
+
             var container = CurrentContainer?.GetValue(gui) as Container;
-            Inventory inv = container?.GetInventory();
+            if (container == null)
+                return;
+
+            SortOne(container, true);
+        }
+
+        /// <summary>
+        /// Sort All: tidy every chest in range, and consolidate the ones that hold the same thing.
+        ///
+        /// Tidying alone is what 1.2.1 did, and it moved nothing between chests - two chests of
+        /// rubies each kept their own, because neither was given a reason to give any up. This
+        /// pass picks one winner per item and pulls every other copy into it, so a base of mixed
+        /// chests ends up with one of each thing.
+        ///
+        /// The winner for an item is the chest that already holds the most of it, ties going to
+        /// the first in range. Most-of-it is chosen over first-in-range because a chest with 38
+        /// rubies is the obvious home for 2 more, and it keeps a chest that happens to be listed
+        /// first from absorbing everything around it.
+        ///
+        /// What does not fit stays in the chest it was in. A winner is only ever filled to its own
+        /// capacity, so a consolidation that cannot finish is resumable rather than lossy - press
+        /// again once the winner has room, and the rest follows.
+        /// </summary>
+        internal static void SortAllContainers()
+        {
+            InventoryGui gui = InventoryGui.instance;
+            if (gui == null || !gui.IsContainerOpen())
+                return;
+
+            Player player = Player.m_localPlayer;
+            if (player == null || player.IsTeleporting())
+                return;
+
+            var open = CurrentContainer?.GetValue(gui) as Container;
+            if (open == null)
+                return;
+
+            float range = Plugin.GatherRange.Value;
+            if (range <= 0f)
+            {
+                SortOne(open, false);
+                return;
+            }
+
+            long playerId = Game.instance.GetPlayerProfile().GetPlayerID();
+            Vector3 at = open.transform.position;
+            float rangeSq = range * range;
+
+            // Every chest we are allowed to touch, gathered once. FindObjectsByType has no
+            // defined order, and the winner below is decided by counts and ties, so a stable
+            // order would only make the same click give the same result twice - worth having,
+            // and it costs one sort.
+            //
+            // The open chest is added outright rather than tested, because Reachable would
+            // refuse it. InventoryGui.UpdateContainer calls Container.SetInUse(true) every frame
+            // the panel is up, which mirrors ZDOVars.s_inUse = 1 onto the ZDO, and Reachable
+            // reads that flag to skip chests somebody else is in. So the one chest the player
+            // was actually looking at was the one Sort All left alone - not tidied, never a
+            // winner, never a donor. It is in range by definition and the player has access to
+            // it by definition, which is the whole of what the other tests ask.
+            var inRange = new List<Container>(32) { open };
+            int vessels = 0;
+            foreach (Container other in UnityEngine.Object.FindObjectsByType<Container>(FindObjectsSortMode.None))
+            {
+                if (other == null || other == open)
+                    continue;
+
+                // Counted separately from the rest so the log says how many boats and carts were
+                // in range and left alone. Reachable refuses them again on its own account; this
+                // is only here to make the refusal readable.
+                if ((other.transform.position - at).sqrMagnitude <= rangeSq && IsVessel(other))
+                {
+                    vessels++;
+                    continue;
+                }
+
+                if (Reachable(other, at, rangeSq, playerId))
+                    inRange.Add(other);
+            }
+
+            inRange.Sort((a, b) => Vector3.SqrMagnitude(a.transform.position - at)
+                .CompareTo(Vector3.SqrMagnitude(b.transform.position - at)));
+
+            int moved = Consolidate(inRange);
+
+            // Tidied after the move, so what arrived is laid out with the rest - the same order
+            // SortOne uses, and the open chest is one of these, so the panel the player is looking
+            // at redraws from its own inventory like any other.
+            // Null-checked again: the list was built before Consolidate ran, and a zone can
+            // unload between the two. A MissingReferenceException here is swallowed by the
+            // UnityEvent that called us, so the remaining chests would go untidied in silence.
+            foreach (Container other in inRange)
+            {
+                if (other != null)
+                    SortOne(other, false);
+            }
+
+            Plugin.Log.LogInfo($"sort all tidied {inRange.Count} chest(s) within {range:0.#}m, moving {moved} stack(s)"
+                + (vessels > 0 ? $"; left {vessels} boat/cart hold(s) alone." : "."));
+        }
+
+        /// <summary>
+        /// One winner per item across the whole set, then every other copy pulled into it.
+        ///
+        /// A chest is only ever a winner for a thing it already holds, which is what keeps a
+        /// chest of ores from swallowing a chest of wood. The pass is over item names rather
+        /// than over the chests, so a donor emptied by one winner is not then asked to donate
+        /// to another - a chest can be both a winner and a donor in the same press, and that is
+        /// not a conflict because the two never touch the same stack.
+        /// </summary>
+        private static int Consolidate(List<Container> inRange)
+        {
+            // What each chest holds, by item name. One pass builds both this and the winner
+            // table, and the winner has to compare totals rather than a single stack, or a
+            // chest holding 5 rubies across five slots would beat one holding 38 in one.
+            var totals = new Dictionary<Container, Dictionary<string, int>>();
+            var winners = new Dictionary<string, Container>(StringComparer.Ordinal);
+            var winningTotal = new Dictionary<string, int>(StringComparer.Ordinal);
+
+            foreach (Container container in inRange)
+            {
+                Inventory inv = container.GetInventory();
+                if (inv == null)
+                    continue;
+
+                var mine = new Dictionary<string, int>(StringComparer.Ordinal);
+                foreach (ItemDrop.ItemData item in inv.GetAllItems())
+                {
+                    if (item?.m_shared == null)
+                        continue;
+
+                    string name = item.m_shared.m_name;
+                    mine[name] = item.m_stack + (mine.TryGetValue(name, out int was) ? was : 0);
+                }
+
+                totals[container] = mine;
+
+                foreach (KeyValuePair<string, int> entry in mine)
+                {
+                    // Strictly greater, so a tie keeps the chest found first - and inRange is
+                    // sorted by distance, so a tie keeps the nearer of the two.
+                    if (!winners.TryGetValue(entry.Key, out Container best) ||
+                        entry.Value > winningTotal[entry.Key])
+                    {
+                        winners[entry.Key] = container;
+                        winningTotal[entry.Key] = entry.Value;
+                    }
+                }
+            }
+
+            int moved = 0;
+
+            foreach (KeyValuePair<string, Container> pair in winners)
+            {
+                Inventory win = pair.Value.GetInventory();
+                if (win == null)
+                    continue;
+
+                foreach (Container other in inRange)
+                {
+                    if (other == pair.Value)
+                        continue;
+
+                    // Only a chest that actually holds this name is worth walking. The lookup is
+                    // what keeps the pass proportional to the base rather than to the square of
+                    // it - with 8 chests and 30 kinds of thing this is the difference between a
+                    // click and a stall.
+                    if (!totals.TryGetValue(other, out Dictionary<string, int> mine) || !mine.ContainsKey(pair.Key))
+                        continue;
+
+                    Inventory from = other.GetInventory();
+                    if (from == null)
+                        continue;
+
+                    bool took = false;
+
+                    // Snapshotted because the move edits the list it is walking.
+                    foreach (ItemDrop.ItemData item in new List<ItemDrop.ItemData>(from.GetAllItems()))
+                    {
+                        if (item?.m_shared == null || item.m_shared.m_name != pair.Key)
+                            continue;
+
+                        if (MoveOne(win, from, item))
+                        {
+                            took = true;
+                            moved++;
+                        }
+                    }
+
+                    if (!took)
+                        continue;
+
+                    // Written back for the same reason GatherLikeItems does it: an unsaved donor
+                    // refills itself on the next sync, and the claim is what makes that write
+                    // stick off a client that does not own the chest.
+                    (ContainerNview?.GetValue(other) as ZNetView)?.ClaimOwnership();
+                    ContainerSave?.Invoke(other, null);
+                    NotifyChanged(from);
+                }
+            }
+
+            return moved;
+        }
+
+        /// <summary>
+        /// One chest: gather, merge, lay out, write back.
+        ///
+        /// The layout is capped at the grid's own size. A chest cannot hold more than it has slots,
+        /// so the overflow is a sign the grid and the item list have disagreed - another mod has
+        /// resized the container - and writing those positions anyway would put items outside the
+        /// grid, where nothing draws them and the next save may drop them.
+        /// </summary>
+        private static void SortOne(Container container, bool gather)
+        {
+            Inventory inv = container.GetInventory();
             if (inv == null)
                 return;
 
             // Gather first, then merge, then lay out - so a stack brought in from next door is
             // poured into the partial stack already here rather than sitting beside it.
-            GatherLikeItems(container, inv);
+            if (gather)
+                GatherLikeItems(inv, container.transform.position, container);
 
             var items = new List<ItemDrop.ItemData>(inv.GetAllItems());
             MergeStacks(inv, items);
             items.Sort(Compare);
 
             int width = inv.GetWidth();
-            for (int i = 0; i < items.Count; i++)
+            int room = width * inv.GetHeight();
+            for (int i = 0; i < items.Count && i < room; i++)
                 items[i].m_gridPos = new Vector2i(i % width, i / width);
 
+            if (items.Count > room)
+                Plugin.Log.LogWarning($"placed {room} of {items.Count} stacks in {Utils.GetPrefabName(container.gameObject)}; the rest were left where they were.");
+
+            // A chest being sorted is being written to, so it needs the ZDO claimed for the same
+            // reason the donor chests in GatherLikeItems do.
+            (ContainerNview?.GetValue(container) as ZNetView)?.ClaimOwnership();
+            ContainerSave?.Invoke(container, null);
             NotifyChanged(inv);
         }
 
@@ -614,41 +948,51 @@ namespace CarturWasteManagement
         private static readonly MethodInfo ContainerSave = AccessTools.Method(typeof(Container), "Save");
         private static readonly MethodInfo ContainerCheckAccess = AccessTools.Method(typeof(Container), "CheckAccess");
         private static readonly FieldInfo ContainerWagon = AccessTools.Field(typeof(Container), "m_wagon");
-
-        // How far Sort reaches for matching items. The same 20m Craft From Containers calls
-        // "nearby", so the two features agree about which chests are part of this base.
-        private const float GatherRange = 20f;
+        private static readonly FieldInfo ContainerNview = AccessTools.Field(typeof(Container), "m_nview");
 
         /// <summary>
         /// Pulls matching items in from the chests around this one.
         ///
         /// Only item types this chest already holds: a chest of ores stays a chest of ores and
         /// gains the ore lying in its neighbours, rather than becoming a bin for everything in
-        /// range. That is the difference between tidying and hoarding.
+        /// range. That is the difference between tidying and hoarding. Sorted the same way from the
+        /// bag, it is the reverse: it fills the bag with what the bag already has room for.
         ///
-        /// Whole stacks only. A stack that will not fit entirely is left where it is instead of
-        /// being split, so a sort never leaves a torn remainder in the chest next door.
+        /// A stack too big for what is left here comes across in part and leaves a valid stack
+        /// behind, rather than being skipped whole.
+        ///
+        /// A sort the player wants without any reaching is a sort of just the one inventory, so a
+        /// range of 0 skips the walk entirely.
         /// </summary>
-        private static void GatherLikeItems(Container target, Inventory inv)
+        private static void GatherLikeItems(Inventory inv, Vector3 at, Container skip)
         {
+            // What this inventory already stocks, read only from the part of it that is stock.
+            // Worn armour and anything in a hidden row are equipment, not a pile to top up:
+            // without those two tests, equipping a bronze sword pulled every bronze sword within
+            // range out of its chest and into the bag.
+            int rows = PlaceableRows(inv);
             var wanted = new HashSet<string>(StringComparer.Ordinal);
             foreach (ItemDrop.ItemData item in inv.GetAllItems())
-                if (item?.m_shared != null)
+                if (item?.m_shared != null && !item.m_equipped && item.m_gridPos.y < rows)
                     wanted.Add(item.m_shared.m_name);
 
-            if (wanted.Count == 0 || Game.instance == null)
+            float range = Plugin.GatherRange.Value;
+            if (wanted.Count == 0 || range <= 0f || Game.instance == null)
                 return;
 
             long playerId = Game.instance.GetPlayerProfile().GetPlayerID();
-            Vector3 at = target.transform.position;
-            float rangeSq = GatherRange * GatherRange;
+            float rangeSq = range * range;
             int moved = 0;
 
             // No registry to consult and none worth keeping: this runs on a button press, not per
             // frame, so the scene query is paid once by the click that asked for it.
             foreach (Container other in UnityEngine.Object.FindObjectsByType<Container>(FindObjectsSortMode.None))
             {
-                if (other == null || other == target || !Reachable(other, at, rangeSq, playerId))
+                // A kg ItemDrawer is not a Container and cannot turn up here. No type in the game
+                // derives from one - read off the DLL, the list of Container subclasses is empty -
+                // and ItemDrawers builds its own ZNetView list through API.ClientSideV2.AllDrawers,
+                // which this query does not reach. Skipped by having no such type, not by a test.
+                if (other == null || other == skip || !Reachable(other, at, rangeSq, playerId))
                     continue;
 
                 Inventory from = other.GetInventory();
@@ -660,25 +1004,155 @@ namespace CarturWasteManagement
                 {
                     if (item?.m_shared == null || !wanted.Contains(item.m_shared.m_name))
                         continue;
-                    if (!inv.CanAddItem(item, item.m_stack))
-                        continue;
 
-                    inv.MoveItemToThis(from, item);
-                    took = true;
-                    moved++;
+                    if (MoveOne(inv, from, item))
+                    {
+                        took = true;
+                        moved++;
+                    }
                 }
 
                 if (!took)
                     continue;
 
                 // The chest that gave items up has to be written back and redrawn too, or its
-                // contents come back the next time anyone opens it.
+                // contents come back the next time anyone opens it. The claim is what makes that
+                // write stick off the owning client: Container.Save puts s_items straight on the
+                // ZDO with no owner check, so a non-owner's write is local only and the owner's
+                // copy lands on the next sync with the items back in the chest. ClaimOwnership
+                // returns immediately when already owner, so it costs nothing in single player.
+                (ContainerNview?.GetValue(other) as ZNetView)?.ClaimOwnership();
                 ContainerSave?.Invoke(other, null);
                 NotifyChanged(from);
             }
 
             if (moved > 0)
-                Plugin.Log.LogInfo($"sort gathered {moved} stack(s) into {Utils.GetPrefabName(target.gameObject)}.");
+                Plugin.Log.LogInfo($"sort gathered {moved} stack(s) from the chests within {range:0.#}m.");
+        }
+
+        /// <summary>
+        /// Moves one stack across, topping up matching piles and taking free slots until either
+        /// the whole stack has gone or the target has no room left for it.
+        ///
+        /// 0,0 is NOT "anywhere". The 5-argument AddItem takes skipValidPositionCheck and
+        /// MoveItemToThis passes it false, so the guard
+        ///   x >= 0 && y >= 0 && x < m_width && (y < m_height || skip)
+        /// runs for real: 0,0 is slot zero. Empty, it Clone()s straight into slot 0,0 and never
+        /// looks for a free slot; occupied by a different type, IsSameType fails and the move
+        /// returns false having done nothing. 1.2.1 passed 0,0 throughout on the belief that it
+        /// meant "anywhere", so every gather wrote into slot zero and silently failed against any
+        /// target whose first slot held something else.
+        ///
+        /// The loop is the other half of that. AddItem fills the ONE slot it is handed and no
+        /// other, so a single call can only move that slot's remaining room: 50 wood offered to a
+        /// chest holding a 20/50 pile and ten empty slots moved 30, left 20 in the donor, and
+        /// returned true. Each pass has to strictly reduce m_stack or it stops, so this is
+        /// bounded by the stack size and cannot spin.
+        /// </summary>
+        private static bool MoveOne(Inventory to, Inventory from, ItemDrop.ItemData item)
+        {
+            if (to == null || from == null || item?.m_shared == null)
+                return false;
+
+            bool moved = false;
+
+            while (item.m_stack > 0)
+            {
+                int before = item.m_stack;
+                MoveSome(to, from, item);
+
+                // m_stack is the truth here, not the returned bool. AddItem returns
+                // (moved == amount), so a short move reads as a failure; and a pass that moved
+                // nothing would move nothing again, which is the only way out of this loop.
+                if (item.m_stack >= before)
+                    break;
+
+                moved = true;
+            }
+
+            return moved;
+        }
+
+        /// <summary>
+        /// One pass of the above: fill one destination slot.
+        ///
+        /// The order is the game's own, from FindFreeStackItem: fill a matching partial pile
+        /// first, because that is the slot AddItem would have found on its own, and only take a
+        /// new slot when there is no pile to fill. Room is recomputed every pass because each
+        /// one changes it.
+        /// </summary>
+        private static void MoveSome(Inventory to, Inventory from, ItemDrop.ItemData item)
+        {
+            // 1. A pile of the same thing with room under it. The matching rule is SameStack
+            //    rather than the IsSameType AddItem itself uses, because that one drops the
+            //    quality test whenever maxQuality is 1 and would happily merge unlike things.
+            ItemDrop.ItemData pile = null;
+            int room = 0;
+            foreach (ItemDrop.ItemData have in to.GetAllItems())
+            {
+                if (have == null || have.m_shared == null || have.m_stack >= have.m_shared.m_maxStackSize || !SameStack(have, item))
+                    continue;
+
+                int free = have.m_shared.m_maxStackSize - have.m_stack;
+                if (pile == null || free > room)
+                {
+                    pile = have;
+                    room = free;
+                }
+            }
+
+            // Clamped to the pile's own room on purpose. AddItem can return false having moved
+            // items when it is asked for more than the slot holds, and the callers use the
+            // return value to decide whether to claim and save the donor - a short move that
+            // read as failure would skip the write and the donor would restore itself.
+            if (pile != null)
+            {
+                to.MoveItemToThis(from, item, Mathf.Min(room, item.m_stack), pile.m_gridPos.x, pile.m_gridPos.y);
+                return;
+            }
+
+            // 2. A slot with nothing in it, inside the rows this inventory may be written to.
+            int rows = PlaceableRows(to);
+            for (int y = 0; y < rows; y++)
+            {
+                for (int x = 0; x < to.GetWidth(); x++)
+                {
+                    if (to.GetItemAt(x, y) != null)
+                        continue;
+
+                    to.MoveItemToThis(from, item, Mathf.Min(item.m_stack, item.m_shared.m_maxStackSize), x, y);
+                    return;
+                }
+            }
+
+            // 3. Nothing. A stack with maxStackSize 1 is still worth one whole slot, which the
+            //    search above already found; this is the genuinely full case.
+        }
+
+        /// <summary>
+        /// A hold on a boat or a cart, rather than a chest in the base.
+        ///
+        /// Container.CheckAccess is no help here. Read off the DLL, it is a three-way switch on
+        /// m_privacy: one case compares m_piece.GetCreator() to the player, one returns false,
+        /// and one returns true unconditionally - which is the case a ship's cargo takes. So a
+        /// longship moored next to the base passed every test Reachable had, and because the
+        /// winner is whichever container holds the most of a thing, a well-stocked hold could
+        /// pull the base's stores out onto the water. A cart left by the door did the same.
+        ///
+        /// Three tests because a vessel's hold is reached three ways:
+        ///  - m_wagon is a public Vagon field on Container, and Catapult.Start sets it from its
+        ///    own Vagon, so it is the cart's own link. 1.2.1 read it but only refused the cart
+        ///    while it was being pulled, which is the one time nobody is sorting anyway.
+        ///  - GetComponentInParent walks up from the container itself, and ShipEffects.Awake
+        ///    resolves its Ship the same way, so a hold parented under the hull is caught.
+        /// The per-press log line counts what this refused, so a boat that slips through is one
+        /// number away from being visible rather than a guess.
+        /// </summary>
+        private static bool IsVessel(Container other)
+        {
+            return (ContainerWagon?.GetValue(other) as Vagon) != null
+                   || other.GetComponentInParent<Vagon>() != null
+                   || other.GetComponentInParent<Ship>() != null;
         }
 
         private static bool Reachable(Container other, Vector3 at, float rangeSq, long playerId)
@@ -688,9 +1162,16 @@ namespace CarturWasteManagement
 
             // Somebody else has it open, or it is a cart being pulled - either way its contents
             // are in use and moving them out from under the user desyncs their panel.
-            if (other.IsInUse() && !other.IsOwner())
+            //
+            // The flag has to come off the ZDO. Container.IsInUse() returns the plain local
+            // m_inUse field, and Container.SetInUse returns immediately unless m_nview.IsOwner(),
+            // so on a client that is not the owner - the only client this guard protects - the
+            // field is never set and IsInUse() can never be true. The owner mirrors it into
+            // ZDOVars.s_inUse from Container.UpdateUseVisual, and that is the copy everyone else
+            // can see. Craft From Containers carries the same guard and the same reading.
+            if ((ContainerNview?.GetValue(other) as ZNetView)?.GetZDO() is ZDO zdo && zdo.GetInt(ZDOVars.s_inUse, 0) == 1)
                 return false;
-            if (ContainerWagon?.GetValue(other) is Vagon wagon && wagon.InUse())
+            if (IsVessel(other))
                 return false;
 
             // A chest carried by a player is not part of the base, and a ward that refuses the
@@ -723,6 +1204,16 @@ namespace CarturWasteManagement
             for (int i = 0; i < items.Count; i++)
             {
                 ItemDrop.ItemData target = items[i];
+
+                // An item already poured out by an earlier pass is on the emptied list and is
+                // about to be removed. Without this line it is still reached as a target on the
+                // next turn of the outer loop, refills itself from the partials after it, and is
+                // then removed anyway - with a full stack in it. Four quarter-stacks of wood
+                // (25/25/25/25, the exact mess this button exists to clean up) left 50 wood in
+                // slot one and deleted a rebuilt 50 in slot two. Container.Save writes that to
+                // the ZDO, so the loss is permanent.
+                if (target.m_stack <= 0)
+                    continue;
 
                 for (int j = i + 1; j < items.Count && target.m_stack < target.m_shared.m_maxStackSize; j++)
                 {
