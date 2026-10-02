@@ -358,7 +358,9 @@ namespace CarturWasteManagement
 
             var item = DragItem?.GetValue(gui) as ItemDrop.ItemData;
             var from = DragInventory?.GetValue(gui) as Inventory;
-            if (item == null || from == null)
+            // Vanilla's own guard: the item can leave the inventory while it sits on the cursor, and
+            // paying a refund for something no longer there is free materials.
+            if (item == null || from == null || !from.ContainsItem(item))
                 return;
 
             int carried = DragAmount?.GetValue(gui) is int n ? n : item.m_stack;
@@ -483,9 +485,15 @@ namespace CarturWasteManagement
             if (rest <= 0)
                 return;
 
-            ItemDrop.ItemData data = drop.m_itemData.Clone();
-            data.m_dropPrefab = prefab;
-            ItemDrop.DropItem(data, rest, player.transform.position + player.transform.forward, Quaternion.identity);
+            // In max-stack chunks: DropItem sets m_stack to what it is given, so one drop of more
+            // than m_maxStackSize makes a stack the game never produces.
+            Vector3 at = player.transform.position + player.transform.forward;
+            for (; rest > 0; rest -= max)
+            {
+                ItemDrop.ItemData data = drop.m_itemData.Clone();
+                data.m_dropPrefab = prefab;
+                ItemDrop.DropItem(data, Mathf.Min(rest, max), at, Quaternion.identity);
+            }
         }
 
         // EpicLoot items pay a second time, on top of the recipe, and which bill they pay
@@ -761,6 +769,13 @@ namespace CarturWasteManagement
             // was actually looking at was the one Sort All left alone - not tidied, never a
             // winner, never a donor. It is in range by definition and the player has access to
             // it by definition, which is the whole of what the other tests ask.
+            // A boat or cart hold is never gathered from, even when it is the one that is open.
+            if (IsVessel(open))
+            {
+                SortOne(open, false);
+                return;
+            }
+
             var inRange = new List<Container>(32) { open };
             int vessels = 0;
             foreach (Container other in UnityEngine.Object.FindObjectsByType<Container>(FindObjectsSortMode.None))
@@ -1088,9 +1103,12 @@ namespace CarturWasteManagement
             //    quality test whenever maxQuality is 1 and would happily merge unlike things.
             ItemDrop.ItemData pile = null;
             int room = 0;
+            int placeable = PlaceableRows(to);
             foreach (ItemDrop.ItemData have in to.GetAllItems())
             {
-                if (have == null || have.m_shared == null || have.m_stack >= have.m_shared.m_maxStackSize || !SameStack(have, item))
+                // Hidden rows are not ours to write to; step 2 already stays inside PlaceableRows.
+                if (have == null || have.m_shared == null || have.m_stack >= have.m_shared.m_maxStackSize
+                    || have.m_gridPos.y >= placeable || !SameStack(have, item))
                     continue;
 
                 int free = have.m_shared.m_maxStackSize - have.m_stack;
@@ -1179,6 +1197,17 @@ namespace CarturWasteManagement
             if (other.GetComponentInParent<Player>() != null)
                 return false;
 
+            // Only player-built chests belong to a base. A grave (TombStone) is a Public Container
+            // with no ward check, and world loot chests (TreasureChest_*) are Public too, so
+            // CheckAccess lets both through and Sort All would empty a grave or loot an unopened
+            // dungeon chest. Piece.GetCreator is written only by placement (Piece.SetCreator), so
+            // it is 0 on anything the world spawned and never 0 on a chest a player placed.
+            if (other.GetComponent<TombStone>() != null)
+                return false;
+            Piece piece = other.GetComponent<Piece>();
+            if (piece == null || !piece.IsPlacedByPlayer())
+                return false;
+
             // A lookup that stops resolving must not quietly hand out everyone's chests, so a
             // missing CheckAccess counts as no access.
             if (!(ContainerCheckAccess?.Invoke(other, new object[] { playerId }) is bool allowed) || !allowed)
@@ -1218,7 +1247,9 @@ namespace CarturWasteManagement
                 for (int j = i + 1; j < items.Count && target.m_stack < target.m_shared.m_maxStackSize; j++)
                 {
                     ItemDrop.ItemData source = items[j];
-                    if (source.m_stack <= 0 || !SameStack(target, source))
+                    // An equipped stack (arrows) is the one the player's slot points at; pouring it
+                    // away and removing the empty item would unequip it under them.
+                    if (source.m_stack <= 0 || source.m_equipped || !SameStack(target, source))
                         continue;
 
                     int move = Mathf.Min(source.m_stack, target.m_shared.m_maxStackSize - target.m_stack);
