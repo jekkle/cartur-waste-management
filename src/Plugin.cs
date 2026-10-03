@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -23,7 +23,7 @@ namespace CarturWasteManagement
     {
         public const string PluginGuid = "com.jekkle.valheim.carturwastemanagement";
         public const string PluginName = "Cartur's Waste Management";
-        public const string PluginVersion = "1.2.2";
+        public const string PluginVersion = "1.2.3";
 
         internal static Sprite CanSprite;
         internal static BepInEx.Logging.ManualLogSource Log;

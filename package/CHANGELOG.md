@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.3
+
+- Sort skips graves and world chests; only chests you built are sorted.
+- Sort All while standing on a boat sorts only that boat's storage.
+- Refunds drop in full stacks.
+- Equipped arrows and hidden inventory rows are left alone.
+- A guard against the item on your cursor being lost.
+
 ## 1.2.2
 
 - **Sort no longer destroys items.** Merging split piles walked each stack as a target after
