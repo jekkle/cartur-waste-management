@@ -38,13 +38,10 @@ once and reuses them. Everything else is ordinary UI and inventory work.
   nothing happens when EpicLoot is absent.
 - **The sort buttons** are clones of the container's Take All button, so
   they carry the game's skin, hover tint and click sound with no art of ours.
-  The player one sits under the can. The container pair — Sort for the open
-  chest, Sort All for every chest in range — sits on one row below Place Stacks,
-  full height and half width each, so it covers exactly that button's footprint
-  and the column below is untouched. The x offsets are derived from
-  `stackAll.pivot.x`, not assumed centred: a rect of width `w` has its left edge
-  at `anchoredPosition - pivot.x * w`, so a half-width button lines up at
-  `-pivot.x * w/2` and the second starts half a button further right.
+  The player one sits under the can. The container pair - Sort for the open
+  chest, Sort All for every chest in range - stacks upward from the chest's
+  weight box, with the weight box's anchors and width. Until 1.2.3 it sat under
+  Place Stacks, which is inside the grid: it covered the first row of cells.
 - **Sorting** groups by `m_itemType`, then name, then best quality first, and
   merges split stacks first. The merge rule is copied from
   `Inventory.FindFreeStackItem` — name, quality, world level, room under
@@ -53,11 +50,11 @@ once and reuses them. Everything else is ordinary UI and inventory work.
 
 ### Reaching into nearby chests
 
-Sort does not only rearrange what is already in the inventory: `GatherLikeItems`
+A chest's Sort does not only rearrange what is already in it: `GatherLikeItems`
 walks the containers within `GatherRange` and pulls in whatever matches. A chest
 collects only the item types it already holds, so a chest of ores stays a chest
-of ores and gains the ore lying around it; the bag is the reverse and fills with
-what it already has room for. Item drawers cannot turn up in the query — no type
+of ores and gains the ore lying around it. The bag's Sort sorts the bag only and
+never takes from chests (until 1.2.3 it did). Item drawers cannot turn up in the query — no type
 in the game derives from `Container`, and kg's drawers are `ZNetView`s from
 `API.ClientSideV2.AllDrawers` — so they are excluded structurally, by a test
 that is not there.

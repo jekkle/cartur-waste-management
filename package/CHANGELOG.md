@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.4
+
+- The bag's Sort sorts your bag only. It no longer pulls matching items in from the chests
+  around you (bug report on Nexus); a chest's Sort still gathers from nearby chests.
+- The chest's Sort and Sort All moved above the chest's weight. Under Place Stacks they
+  covered the first row of slots.
+- No more yellow "Could not find type" warnings in the log when Epic Loot or Cartur's UI
+  is not installed (bug report on Nexus). They were harmless, and are gone.
+
 ## 1.2.3
 
 - Sort skips graves and world chests; only chests you built are sorted.

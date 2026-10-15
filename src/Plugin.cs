@@ -23,7 +23,7 @@ namespace CarturWasteManagement
     {
         public const string PluginGuid = "com.jekkle.valheim.carturwastemanagement";
         public const string PluginName = "Cartur's Waste Management";
-        public const string PluginVersion = "1.2.3";
+        public const string PluginVersion = "1.2.4";
 
         internal static Sprite CanSprite;
         internal static BepInEx.Logging.ManualLogSource Log;
@@ -42,8 +42,8 @@ namespace CarturWasteManagement
             Log = Logger;
             CanSprite = LoadSprite("trashcan_128.png");
 
-            // Asked for: the chest Sort button is put directly under Place Stacks, which is a
-            // column other mods also build into, and there was no way to move it or turn it off.
+            // Asked for: the chest Sort buttons sit in a column other mods also build into, and
+            // there was no way to move them or turn them off.
             // Deliberately an offset you set rather than a collision test: finding another mod's
             // button means guessing at its RectTransform and re-checking whenever it moves, and
             // a number typed once cannot be wrong.
@@ -55,20 +55,20 @@ namespace CarturWasteManagement
             ShowBagSort = Config.Bind("Buttons", "ShowBagSort", true,
                 "Show the Sort button under the trash can, for your own bag.");
             ShowChestSort = Config.Bind("Buttons", "ShowChestSort", true,
-                "Show the Sort button under Place Stacks, for the open chest.");
+                "Show the Sort button above the chest's weight, for the open chest.");
             ShowChestSortAll = Config.Bind("Buttons", "ShowChestSortAll", true,
-                "Show the Sort All button under Sort, for every chest in range.");
+                "Show the Sort All button above Sort, for every chest in range.");
             // The same 20 metres Craft From Containers calls nearby, so the two agree about which
             // chests are part of a base. Read at click time, so a change takes effect on the next
             // sort with no restart.
             GatherRange = Config.Bind("Buttons", "GatherRange", 20f,
-                "How far, in metres, Sort pulls matching items in from nearby chests, and how far Sort All reaches. 0 disables both.");
+                "How far, in metres, a chest's Sort pulls matching items in from nearby chests, and how far Sort All reaches. 0 disables both. The bag's Sort never takes from chests.");
             TrashCanOffset = Config.Bind("Buttons", "TrashCanOffset", Vector2.zero,
                 "Nudge the trash can from where it normally sits, in UI pixels. X is right, Y is up.");
             BagSortOffset = Config.Bind("Buttons", "BagSortOffset", Vector2.zero,
                 "Nudge the bag Sort button, in UI pixels. X is right, Y is up.");
             ChestSortOffset = Config.Bind("Buttons", "ChestSortOffset", Vector2.zero,
-                "Nudge the chest Sort button, in UI pixels. X is right, Y is up. Use this when another mod already owns the space under Place Stacks.");
+                "Nudge the chest Sort button, in UI pixels. X is right, Y is up. Moves Sort and Sort All together. Use this when another mod already owns the space above the chest's weight.");
 
             try
             {
@@ -195,19 +195,15 @@ namespace CarturWasteManagement
         /// and built once and reused: the container panel is the same object for every chest, only
         /// its inventory changes.
         ///
-        /// The pair sits directly under Place Stacks (InventoryGui.m_stackAllButton) - Cartur's
-        /// call - and takes that button's anchors and pivot so it reads as part of the same stack
-        /// however the panel has been moved or scaled.
+        /// They stack upward from the chest's weight box, the same column the bag's Sort and can
+        /// make above the bag's weight. Until 1.2.3 they sat side by side under Place Stacks,
+        /// which is inside the grid: Place Stacks spans y 128-168 of the 340-high panel, the grid
+        /// starts at 124 (ContainerGrid, offsetMax -46), so the pair covered the first row of
+        /// cells (probe container.txt, 2026-10-12). Cartur's UI lays its own chest header and
+        /// collects every button under the panel wherever it stands, so it is unaffected.
         ///
-        /// The two sit side by side on one row: full Place Stacks height, half its width each, so
-        /// the pair covers exactly the footprint of one vanilla button and the column below is
-        /// untouched. Asked for - two stacked half-height buttons were hard to read.
-        ///
-        /// The x offsets are derived from the pivot rather than assumed to be centred. A rect of
-        /// width w at anchoredPosition a has its left edge at a - pivot.x * w, so a half-width
-        /// button lines up with Place Stacks' left edge at -pivot.x * w/2, and the second one
-        /// starts half a button further right. At the usual centre pivot that is the symmetric
-        /// -/+ quarter width; at a left pivot it is 0 and +half. Neither is hardcoded.
+        /// Same anchors and width as the weight box, so the column holds however the panel is
+        /// moved or scaled; Place Stacks' height, so they read as the game's buttons.
         /// </summary>
         private static void BuildContainerSort(InventoryGui gui)
         {
@@ -216,24 +212,21 @@ namespace CarturWasteManagement
 
             RectTransform stackAll = gui.m_stackAllButton != null
                 ? gui.m_stackAllButton.GetComponent<RectTransform>() : null;
-            if (stackAll == null)
+            var weight = gui.m_containerWeight != null ? gui.m_containerWeight.transform.parent as RectTransform : null;
+            if (stackAll == null || weight == null || weight.parent != stackAll.parent)
                 return;
 
             float height = stackAll.rect.height;
-            float halfWidth = stackAll.rect.width * 0.5f;
-            float shift = stackAll.pivot.x * halfWidth;
+            var size = new Vector2(weight.rect.width, height);
+            float sortY = weight.anchoredPosition.y + (1f - weight.pivot.y) * weight.rect.height + Gap + height * 0.5f;
 
-            // One full button height below Place Stacks, and both on that same row.
-            Vector2 row = stackAll.anchoredPosition - new Vector2(0f, height + Gap);
-            var size = new Vector2(halfWidth, height);
+            s_containerSortHome = new Vector2(weight.anchoredPosition.x, sortY);
+            s_containerSortAllHome = new Vector2(weight.anchoredPosition.x, sortY + height + Gap);
 
-            s_containerSortHome = row + new Vector2(-shift, 0f);
-            s_containerSortAllHome = row + new Vector2(halfWidth - shift, 0f);
-
-            s_containerSort = MakeContainerButton(gui, stackAll, "CarturSortContainerButton", "Sort",
+            s_containerSort = MakeContainerButton(gui, weight, "CarturSortContainerButton", "Sort",
                 WasteBin.SortOpenContainer, s_containerSortHome, size);
 
-            s_containerSortAll = MakeContainerButton(gui, stackAll, "CarturSortAllContainerButton", "Sort All",
+            s_containerSortAll = MakeContainerButton(gui, weight, "CarturSortAllContainerButton", "Sort All",
                 WasteBin.SortAllContainers, s_containerSortAllHome, size);
 
             // The three vanilla buttons' own positions, so where the pair landed can be read
@@ -250,10 +243,10 @@ namespace CarturWasteManagement
         }
 
         /// <summary>
-        /// One half-height clone of Take All. The height goes on as a plain positive sizeDelta:
-        /// Place Stacks' anchors are the same point, not stretched, so sizeDelta is the button's
-        /// size outright. Negating it to mean "half a stretched button" only flips the rect and
-        /// draws nothing - which is what 1.2.1 did, and the log line below is what said so.
+        /// One clone of Take All, placed like the rect it is given. The size goes on as a plain
+        /// positive sizeDelta: that rect's anchors are one point, not stretched, so sizeDelta is the
+        /// button's size outright. Negating it to mean "half a stretched button" only flips the
+        /// rect and draws nothing - which is what 1.2.1 did, and the log line is what said so.
         /// </summary>
         private static GameObject MakeContainerButton(InventoryGui gui, RectTransform stackAll,
             string name, string caption, UnityEngine.Events.UnityAction onClick, Vector2 home, Vector2 sizeDelta)
@@ -509,24 +502,42 @@ namespace CarturWasteManagement
         //
         // All of it by reflection: EpicLoot is a soft dependency with no build reference. Every
         // lookup below is null when it is not installed, and then this does nothing at all.
-        private static readonly Type RarityType = AccessTools.TypeByName("EpicLoot.ItemRarity");
-        private static readonly MethodInfo EnchantCostFor = RarityType == null ? null :
-            AccessTools.Method(AccessTools.TypeByName("EpicLoot.Crafting.EnchantCostsHelper"),
-                               "GetEnchantCost", new[] { typeof(ItemDrop.ItemData), RarityType });
-        private static readonly MethodInfo SacrificeProductsFor =
-            AccessTools.Method(AccessTools.TypeByName("EpicLoot.Crafting.EnchantCostsHelper"),
-                               "GetSacrificeProducts", new[] { typeof(ItemDrop.ItemData) });
-        private static readonly MethodInfo IsMagicItem =
-            AccessTools.Method(AccessTools.TypeByName("EpicLoot.API"), "IsMagicItem", new[] { typeof(ItemDrop.ItemData) });
-        private static readonly MethodInfo IsUnidentifiedItem =
-            AccessTools.Method(AccessTools.TypeByName("EpicLoot.API"), "IsUnidentified", new[] { typeof(ItemDrop.ItemData) });
-        private static readonly MethodInfo TryGetRarity =
-            AccessTools.Method(AccessTools.TypeByName("EpicLoot.API"), "TryGetRarity",
+        private static readonly Type RarityType = FindType("EpicLoot.ItemRarity");
+        private static readonly Type EnchantCostsType = FindType("EpicLoot.Crafting.EnchantCostsHelper");
+        private static readonly Type EpicLootApi = FindType("EpicLoot.API");
+        private static readonly Type ItemAmountType = FindType("EpicLoot.Crafting.ItemAmountConfig");
+        private static readonly MethodInfo EnchantCostFor = RarityType == null || EnchantCostsType == null ? null :
+            AccessTools.Method(EnchantCostsType, "GetEnchantCost", new[] { typeof(ItemDrop.ItemData), RarityType });
+        private static readonly MethodInfo SacrificeProductsFor = EnchantCostsType == null ? null :
+            AccessTools.Method(EnchantCostsType, "GetSacrificeProducts", new[] { typeof(ItemDrop.ItemData) });
+        private static readonly MethodInfo IsMagicItem = EpicLootApi == null ? null :
+            AccessTools.Method(EpicLootApi, "IsMagicItem", new[] { typeof(ItemDrop.ItemData) });
+        private static readonly MethodInfo IsUnidentifiedItem = EpicLootApi == null ? null :
+            AccessTools.Method(EpicLootApi, "IsUnidentified", new[] { typeof(ItemDrop.ItemData) });
+        private static readonly MethodInfo TryGetRarity = EpicLootApi == null ? null :
+            AccessTools.Method(EpicLootApi, "TryGetRarity",
                                new[] { typeof(ItemDrop.ItemData), typeof(int).MakeByRefType() });
-        private static readonly FieldInfo CostItem =
-            AccessTools.Field(AccessTools.TypeByName("EpicLoot.Crafting.ItemAmountConfig"), "Item");
-        private static readonly FieldInfo CostAmount =
-            AccessTools.Field(AccessTools.TypeByName("EpicLoot.Crafting.ItemAmountConfig"), "Amount");
+        private static readonly FieldInfo CostItem = ItemAmountType == null ? null :
+            AccessTools.Field(ItemAmountType, "Item");
+        private static readonly FieldInfo CostAmount = ItemAmountType == null ? null :
+            AccessTools.Field(ItemAmountType, "Amount");
+
+        // AccessTools.TypeByName logs a HarmonyX warning for every name it cannot find, and so does
+        // every AccessTools lookup handed the resulting null. For a soft dependency, absent is the
+        // normal case, and the log filled with a dozen warnings on every load without EpicLoot
+        // (Nexus bug report, sandyy96, 2026-10-15). Same search across loaded assemblies, silent.
+        private static Type FindType(string fullName)
+        {
+            foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type t;
+                try { t = asm.GetType(fullName, false); }
+                catch (Exception) { continue; }
+                if (t != null)
+                    return t;
+            }
+            return null;
+        }
 
         private static void GiveEpicLootRefund(Player player, ItemDrop.ItemData item, int amount)
         {
@@ -607,8 +618,12 @@ namespace CarturWasteManagement
         /// is read by reflection, and null when that mod is not installed - and then the
         /// inventory's own height is the right answer, because nothing is hidden in it.
         /// </summary>
+        // Cartur's Rune UI keeps the same contract under its own namespace (Slots.VisibleRows,
+        // cartur-rune-ui/src/Slots.cs); the two cannot load together.
+        private static readonly Type SlotsType =
+            FindType("CarturUIHud.Slots") ?? FindType("CarturRuneUI.Slots");
         private static readonly MethodInfo VisibleRowsGetter =
-            AccessTools.PropertyGetter(AccessTools.TypeByName("CarturUIHud.Slots"), "VisibleRows");
+            SlotsType != null ? AccessTools.PropertyGetter(SlotsType, "VisibleRows") : null;
 
         private static bool s_boundaryLogged;
 
@@ -653,19 +668,14 @@ namespace CarturWasteManagement
                 s_boundaryLogged = true;
                 Plugin.Log.LogInfo("sort covers rows 1-" + (visible - 1) + " of " + visible
                     + " visible ("
-                    + (VisibleRowsGetter != null ? "row count from CarturUIHud.Slots"
+                    + (VisibleRowsGetter != null ? "row count from " + SlotsType.FullName
                                                  : "no slot mod found, using the grid height")
                     + ")");
             }
 
-            // Top up from the chests around the player first, so a sort with a near-empty grid and
-            // a full ore chest next door both happen on one press. The bag is not a container, so
-            // there is no anchor chest and nothing to skip - the player's own position is the
-            // centre of the walk. Anything it brings lands in the first free slot the game picks,
-            // which can be a hotbar row; the hotbar is left alone by the layout below either way.
-            GatherLikeItems(inv, player.transform.position, null);
-
-            // Collected after the gather, so what arrived is laid out with the rest.
+            // The bag's Sort sorts the bag and nothing else (Cartur, 2026-10-12: "it grabbed from
+            // chests, I only want that to sort my inventory"). Until 1.2.3 it first pulled
+            // matching items in from every chest within GatherRange; only the chest Sort does now.
             var loose = new List<ItemDrop.ItemData>();
             foreach (ItemDrop.ItemData item in inv.GetAllItems())
             {
@@ -676,10 +686,9 @@ namespace CarturWasteManagement
             MergeStacks(inv, loose);
             loose.Sort(Compare);
 
-            // The sort can also top the bag up from the chests around it, so the count can exceed
-            // what the visible rows hold. Only the first rows get placed; the rest stay wherever
-            // they are rather than being written to a row the player cannot see, which is the
-            // equipment area and would look like the items had gone.
+            // Merging only shrinks the count, so this should never trip; kept so a stack is never
+            // written to a row the player cannot see, which is the equipment area and would look
+            // like the item had gone.
             int width = inv.GetWidth();
             int room = width * (visible - 1);
             for (int i = 0; i < loose.Count && i < room; i++)

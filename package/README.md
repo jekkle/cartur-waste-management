@@ -34,9 +34,9 @@ shows you. Reached by reflection, so nothing happens when EpicLoot is absent.
 
 ## The sort buttons
 
-One under the can for your own bag. Two under Place Stacks for the chests: **Sort**
-for the open one, **Sort All** for every chest in range. The pair takes up the same
-space the single button used to, so it doesn't grow into whatever is below it.
+One under the can for your own bag. Two above the chest's weight for the chests:
+**Sort** for the open one, **Sort All** for every chest in range. They stand in the
+same column as the bag's, clear of the chest's slots.
 
 Sorting groups by item type, then by name, then puts the best quality first. It
 also **pours split stacks back together** — half a stack of wood here and half
@@ -47,16 +47,15 @@ quick-slot row added by another mod.
 
 ## Pulling from nearby chests
 
-Sort doesn't only tidy what is already in the inventory. It also **reaches out to
-the chests around you** and brings in what matches, so a chest of ore and an ore
-chest next door end up as one chest of ore, and a nearly empty bag and a full ore
-chest beside it are both dealt with on one press. How far it looks is
-`GatherRange` in the settings, and 0 turns the reaching off.
+A chest's Sort doesn't only tidy what is already in it. It also **reaches out to
+the chests around it** and brings in what matches, so a chest of ore and an ore
+chest next door end up as one chest of ore. How far it looks is `GatherRange` in
+the settings, and 0 turns the reaching off. The bag's Sort sorts your bag and
+nothing else; it never takes from chests.
 
 A chest only collects the kinds of item it already holds — a chest of ores stays a
 chest of ores, and gains the ore from around it, rather than becoming a bin for
-everything in range. Your bag is the other way round: it fills with what it already
-has room for.
+everything in range.
 
 Chests you have no permission for, chests inside someone else's ward, chests other
 players have open, and containers carried by a player are all left alone. So are
