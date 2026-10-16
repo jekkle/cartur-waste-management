@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.5
+
+- New icon, and the README is rewritten: a fuller description of what the mod does, every setting and default checked against the code, and image captions that match the pictures. No code changes. Thunderstore also gets 1.2.4's fixes with this version, since 1.2.4 went out while the Thunderstore listing was down.
+
 ## 1.2.4
 
 - The bag's Sort sorts your bag only. It no longer pulls matching items in from the chests
