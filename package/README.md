@@ -4,6 +4,8 @@ A trash can and sort buttons in the inventory, where the mess is.
 
 ![Cartur's Waste Management](https://raw.githubusercontent.com/jekkle/cartur-waste-management/master/media/nexus-header.png)
 
+![The trash can and the Sort button beside the bag](https://raw.githubusercontent.com/jekkle/cartur-waste-management/master/docs/images/ingame-waste.jpg)
+
 ## The can
 
 Pick an item up and drop it on the can. It comes apart into what it was made of, and the parts land in your bag. Anything that does not fit in the bag is dropped at your feet.
