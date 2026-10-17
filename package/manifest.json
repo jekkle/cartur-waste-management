@@ -1,6 +1,6 @@
 {
   "name": "Carturs_Waste_Management",
-  "version_number": "1.2.5",
+  "version_number": "1.2.6",
   "website_url": "https://github.com/jekkle/cartur-waste-management",
   "description": "A trash can and sort buttons in the inventory. Drop an item on the can for half of what the bench charged, EpicLoot materials included. Sort tidies the bag or a chest and pulls matching items in from nearby chests; Sort All does the whole base.",
   "dependencies": [

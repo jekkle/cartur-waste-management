@@ -1,62 +1,84 @@
-[size=4][b]A trash can and a sort button, in the inventory, where the mess is.[/b][/size]
+A trash can and sort buttons in the inventory, where the mess is.
 
 [img]https://raw.githubusercontent.com/jekkle/cartur-waste-management/master/media/nexus-header.png[/img]
 
-[size=4][b]The can[/b][/size]
+[size=5][b]The can[/b][/size]
 
-Pick an item up and click the can. It comes apart into what it was made of and the parts land in your bag.
+Pick an item up and drop it on the can. It comes apart into what it was made of, and the parts land in your bag. Anything that does not fit in the bag is dropped at your feet.
 
-The refund is the item's own recipe - the same one the bench used to build it - skipping anything the game itself marks as not recoverable. You get [b]half of that bill back, rounded up[/b]: scrapping should cost you something, and rounding up means a single unit of an ingredient still returns one rather than nothing. A leftover that does not make a full craft returns nothing. Quality is paid for: a level 3 sword cost more than a level 1 and gives back more.
+The refund is the item's own recipe, the same one the bench used to build it, and you get half of it back, rounded up. Scrapping should cost you something, and rounding up means a single unit of an ingredient still returns one rather than nothing. A leftover that doesn't make a whole craft returns nothing.
 
-Anything with no recipe - wood, stone, ore, a handful of raspberries - has nothing to give back, so it is simply thrown away.
+Every upgrade you paid for is counted, including the earlier steps. A level 3 sword was charged for the craft and then again for each step up, so the refund adds all of that together and a level 3 always gives back more than a level 1.
 
-[b]EpicLoot is paid too, when it is installed.[/b] An enchanted item was charged materials at the enchanting table, so half of that bill comes back on top of the recipe. Anything else EpicLoot would sacrifice - a trophy, a boss drop, an unidentified item - never cost anything to make, so those pay EpicLoot's own sacrifice table instead, unhalved: the same numbers its enchanting UI already shows you. Reached by reflection, with no build reference, so nothing happens when EpicLoot is absent.
+Anything with no recipe, such as wood, stone, ore or a handful of raspberries, has nothing to give back, so it is simply thrown away. The can destroys things and there is no undo. That is what it is for.
 
-[b]The can destroys things, and there is no undo.[/b] That is what it is for. It asks no questions.
+[img]https://raw.githubusercontent.com/jekkle/cartur-waste-management/master/docs/images/ingame-waste.jpg[/img]
 
-[img]https://raw.githubusercontent.com/jekkle/cartur-waste-management/master/media/nexus-gallery.png[/img]
+When Epic Loot is installed, it is paid too. An enchanted item was charged materials at the enchanting table, so half of that bill comes back on top of the recipe. Anything else Epic Loot would sacrifice, such as a trophy, a boss drop or an unidentified item, never cost anything to make. Those pay Epic Loot's own sacrifice table instead, unhalved, which is the same numbers its enchanting UI already shows you. Epic Loot is reached by reflection, so nothing happens when it is absent.
 
-[size=4][b]The sort buttons[/b][/size]
+[size=5][b]The sort buttons[/b][/size]
 
-One under the can for your own bag, one under Place Stacks for whatever chest is open.
+There is one under the can for your own bag, and two above the chest's weight for chests: Sort for the open chest and Sort All for every chest in range. They stand in the same column as the bag's, clear of the chest's slots.
 
-Sorting groups by item type, then by name, then puts the best quality first. [b]It also pours split stacks back together[/b] - half a stack of wood here and half there come out as one pile, by the game's own stacking rule: same item, same quality, same world level.
+Sorting groups by item type, then by name, and puts the best quality first. It also pours split stacks back together, so half a stack of wood here and half there come out as one pile. Your hotbar row is never touched, and neither are the hidden rows other mods use for equipment and quick slots.
 
-Your hotbar row is never touched. Neither is anything living in an equipment or quick-slot row added by another mod - the boundary is read from Cartur's UI - HUD when it is installed, and from the inventory's own height when it is not.
+[size=5][b]Pulling from nearby chests[/b][/size]
 
-[size=4][b]Config[/b][/size]
+A chest's Sort doesn't only tidy what is already in it. It also reaches out to the chests around it and brings in what matches, so a chest of ore and an ore chest next door end up as one chest of ore. How far it looks is GatherRange (20 metres by default), and 0 turns the reaching off. The bag's Sort sorts your bag and nothing else. It never takes from chests.
 
-BepInEx/config/com.jekkle.valheim.carturwastemanagement.cfg, written on first run.
+A chest only collects the kinds of item it already holds. A chest of ores stays a chest of ores and gains the ore from around it, rather than becoming a bin for everything in range.
+
+Only chests players built are touched. Graves and world loot chests are left alone. So are chests you have no permission for, chests inside someone else's ward, chests another player has open, and containers carried by a player. Boats and carts are skipped too, because a hold is not part of your base, and without that rule a moored longship holding a lot of something could win it and pull your stores out onto the water. If the chest you have open is itself a boat or cart hold, Sort All sorts only that one.
+
+Sort All tidies every chest in range and consolidates them. For each kind of thing it finds, one chest wins, the one already holding the most of it and on a tie the nearer, and every other copy is pulled into that chest. So two chests of rubies end up as one chest of rubies. A chest only ever wins a kind of thing it already holds, so a chest of ores still cannot swallow a chest of wood.
+
+What will not fit in the winner is left in the chest it was in. Nothing is thrown away, and a base that could not be finished in one press finishes on the next.
+
+[size=5][b]Settings[/b][/size]
+
+Config file: BepInEx/config/com.jekkle.valheim.carturwastemanagement.cfg.
 
 [list]
-[*][b]ShowTrashCan[/b] (default true) - show the can in the player panel.[/*]
-[*][b]ShowBagSort[/b] (default true) - show the Sort button for your own bag.[/*]
-[*][b]ShowChestSort[/b] (default true) - show the Sort button for the open chest.[/*]
-[*][b]TrashCanOffset[/b] (0, 0) - nudge the can, in UI pixels. X is right, Y is up.[/*]
-[*][b]BagSortOffset[/b] (0, 0) - nudge the bag Sort button.[/*]
-[*][b]ChestSortOffset[/b] (0, 0) - nudge the chest Sort button.[/*]
+[*][b]ShowTrashCan[/b] (true) - Show the can in the player panel.[/*]
+[*][b]ShowBagSort[/b] (true) - Show the Sort button for your own bag.[/*]
+[*][b]ShowChestSort[/b] (true) - Show Sort for the open chest.[/*]
+[*][b]ShowChestSortAll[/b] (true) - Show Sort All above it.[/*]
+[*][b]GatherRange[/b] (20) - How far, in metres, a chest's Sort pulls matching items in from nearby chests, and how far Sort All reaches. 0 turns both off.[/*]
+[*][b]TrashCanOffset[/b] (0, 0) - Nudge the can, in UI pixels. X right, Y up.[/*]
+[*][b]BagSortOffset[/b] (0, 0) - Nudge the bag Sort button.[/*]
+[*][b]ChestSortOffset[/b] (0, 0) - Nudge both chest buttons, as a pair.[/*]
 [/list]
 
-All six are read each time the panel opens, so a change takes effect the next time you open your inventory - no restart.
+The button settings are read when the inventory opens, so a change takes effect the next time you open it. GatherRange is read when you click. No restart is needed for any of them.
 
-The chest Sort button sits directly under Place Stacks, which is a column other mods build into as well. ChestSortOffset moves it out of the way and ShowChestSort removes it. That is an offset you set rather than a collision test on purpose: finding another mod's button means guessing at its rect and re-checking whenever it moves, and a number typed once cannot be wrong.
+[size=5][b]Compatibility[/b][/size]
 
-[size=4][b]Compatibility[/b][/size]
+The chest buttons sit above the chest's weight, in a column other mods build into as well. ChestSortOffset moves the pair out of the way, and ShowChestSort and ShowChestSortAll remove them. It is an offset you set rather than a collision test on purpose. Finding another mod's button means guessing at its rect and re-checking whenever it moves, and a number typed once cannot be wrong.
 
-One postfix on InventoryGui.Show, which builds the buttons once and reuses them. No transpilers, no method replaced, nothing per frame. The Sort buttons are clones of the game's own Take All button, so they carry its skin, hover tint and click sound rather than art of mine. Client-side: nothing is synced, and the people you play with do not need it.
+Cartur's UI moves the can and the bag's Sort button into its inventory side column when both are installed. Epic Loot is optional.
 
-[size=4][b]Installation[/b][/size]
+Client-side. No server install is needed, and it doesn't matter whether the people you play with have it.
 
-Requires BepInEx. Unpack into your Valheim folder so the DLL lands in BepInEx/plugins.
+[size=5][b]Install[/b][/size]
 
-[size=4][b]More from Cartur[/b][/size]
+Needs [url=https://thunderstore.io/c/valheim/p/denikson/BepInExPack_Valheim/]BepInExPack Valheim[/url]. Use a mod manager (r2modman, Thunderstore or Gale) and it installs that for you. To install by hand, drop CarturWasteManagement.dll into BepInEx/plugins.
 
-[url=https://www.nexusmods.com/valheim/mods/3679]HD Blood[/url] - higher resolution ground blood and a real burst on every hit.
+[size=5][b]Discord[/b][/size]
+[url=https://discord.gg/nd5RqpwNkz]Cartur's Mods Discord[/url] - bug reports, install help, and mod requests. Bug reports get their own thread so nothing is lost, and requests are voted on.
+
+[size=5][b]More from Cartur[/b][/size]
+
+[url=https://www.nexusmods.com/valheim/mods/3679]HD Blood[/url] - higher resolution ground blood, and a real burst of blood on every hit and kill.
 [url=https://www.nexusmods.com/valheim/mods/3681]Map Pins[/url] - pins the world onto your map as you explore it.
 [url=https://www.nexusmods.com/valheim/mods/3684]Compass and Clock[/url] - a compass bar across the top of the screen.
 [url=https://www.nexusmods.com/valheim/mods/3685]Safe Stamina[/url] - stamina costs nothing while no enemy is near.
 [url=https://www.nexusmods.com/valheim/mods/3728]Follow Command[/url] - every tamed animal takes the follow command.
 [url=https://www.nexusmods.com/valheim/mods/3760]Flooring[/url] - floors keep the rain off, and fires sit on them.
 [url=https://www.nexusmods.com/valheim/mods/3779]UI - HUD[/url] - a hand-drawn bronze HUD you can arrange in game.
+[url=https://www.nexusmods.com/valheim/mods/4010]Feeding Trough[/url] - a trough your animals eat out of.
+[url=https://www.nexusmods.com/valheim/mods/4088]Combat Text[/url] - bigger damage numbers and a fast crit pop.
+[url=https://www.nexusmods.com/valheim/mods/4389]Farming[/url] - faster crops, bigger harvests, and whole fields planted at once.
+[url=https://www.nexusmods.com/valheim/mods/4390]Mining[/url] - harder pickaxe hits, more ore, and deposits that shatter.
+[url=https://www.nexusmods.com/valheim/mods/4391]Sailing[/url] - a Sailing skill: faster ships, tougher hulls, a wider map reveal.
 
 Free, and always will be - if it improved your game you can [url=https://www.patreon.com/c/cartur]tip me on Patreon[/url].
