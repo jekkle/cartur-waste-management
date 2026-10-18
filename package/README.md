@@ -36,6 +36,12 @@ Sort All tidies every chest in range and consolidates them. For each kind of thi
 
 What will not fit in the winner is left in the chest it was in. Nothing is thrown away, and a base that could not be finished in one press finishes on the next.
 
+## Quick deposit
+
+Press **Y** and everything in your bag that a nearby chest already holds goes into that chest, without opening it. It works with the inventory open or closed, and does nothing while you are typing in chat, the console or a text box. Your hotbar row, equipped items and the item on your cursor stay put, and so does anything no nearby chest holds. A message says how many items moved.
+
+It reaches as far as `GatherRange` and skips the same chests Sort does: other players' wards, boats and carts, graves, world chests and chests someone else has open. The nearest chest gets first pick, and what does not fit moves on to the next.
+
 ## Settings
 
 Config file: `BepInEx/config/com.jekkle.valheim.carturwastemanagement.cfg`.
@@ -46,7 +52,8 @@ Config file: `BepInEx/config/com.jekkle.valheim.carturwastemanagement.cfg`.
 | `ShowBagSort` | true | Show the Sort button for your own bag. |
 | `ShowChestSort` | true | Show Sort for the open chest. |
 | `ShowChestSortAll` | true | Show Sort All above it. |
-| `GatherRange` | 20 | How far, in metres, a chest's Sort pulls matching items in from nearby chests, and how far Sort All reaches. 0 turns both off. |
+| `GatherRange` | 20 | How far, in metres, a chest's Sort pulls matching items in from nearby chests, and how far Sort All and Quick deposit reach. 0 turns all three off. |
+| `Hotkeys / QuickDeposit` | Y | The Quick deposit key. |
 | `TrashCanOffset` | 0, 0 | Nudge the can, in UI pixels. X right, Y up. |
 | `BagSortOffset` | 0, 0 | Nudge the bag Sort button. |
 | `ChestSortOffset` | 0, 0 | Nudge both chest buttons, as a pair. |

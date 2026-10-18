@@ -7,6 +7,7 @@ using BepInEx;
 using HarmonyLib;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace CarturWasteManagement
@@ -23,7 +24,7 @@ namespace CarturWasteManagement
     {
         public const string PluginGuid = "com.jekkle.valheim.carturwastemanagement";
         public const string PluginName = "Cartur's Waste Management";
-        public const string PluginVersion = "1.2.6";
+        public const string PluginVersion = "1.2.7";
 
         internal static Sprite CanSprite;
         internal static BepInEx.Logging.ManualLogSource Log;
@@ -33,6 +34,7 @@ namespace CarturWasteManagement
         internal static BepInEx.Configuration.ConfigEntry<bool> ShowChestSort;
         internal static BepInEx.Configuration.ConfigEntry<bool> ShowChestSortAll;
         internal static BepInEx.Configuration.ConfigEntry<float> GatherRange;
+        internal static BepInEx.Configuration.ConfigEntry<BepInEx.Configuration.KeyboardShortcut> QuickDepositKey;
         internal static BepInEx.Configuration.ConfigEntry<Vector2> TrashCanOffset;
         internal static BepInEx.Configuration.ConfigEntry<Vector2> BagSortOffset;
         internal static BepInEx.Configuration.ConfigEntry<Vector2> ChestSortOffset;
@@ -62,7 +64,12 @@ namespace CarturWasteManagement
             // chests are part of a base. Read at click time, so a change takes effect on the next
             // sort with no restart.
             GatherRange = Config.Bind("Buttons", "GatherRange", 20f,
-                "How far, in metres, a chest's Sort pulls matching items in from nearby chests, and how far Sort All reaches. 0 disables both. The bag's Sort never takes from chests.");
+                "How far, in metres, a chest's Sort pulls matching items in from nearby chests, how far Sort All reaches, and how far Quick Deposit looks. 0 disables all three. The bag's Sort never takes from chests.");
+            // Y is unbound in vanilla (every ZInput.AddButton default read off assembly_utils: E R
+            // Space LCtrl LShift C Q X F WASD Tab M , . Esc V PgUp PgDn arrows F5 G T Enter 1-8) and
+            // unused by the other Cartur mods (Z V B quick slots, Shift+B, Alt+O, F7, F8).
+            QuickDepositKey = Config.Bind("Hotkeys", "QuickDeposit", new BepInEx.Configuration.KeyboardShortcut(KeyCode.Y),
+                "Press to move every loose item in your bag that a chest within GatherRange already holds into that chest, without opening it. Hotbar row and equipped items are never moved.");
             TrashCanOffset = Config.Bind("Buttons", "TrashCanOffset", Vector2.zero,
                 "Nudge the trash can from where it normally sits, in UI pixels. X is right, Y is up.");
             BagSortOffset = Config.Bind("Buttons", "BagSortOffset", Vector2.zero,
@@ -79,6 +86,12 @@ namespace CarturWasteManagement
             {
                 Logger.LogWarning($"Failed to patch InventoryGui - no can and no sort button this run. {e}");
             }
+        }
+
+        private void Update()
+        {
+            if (QuickDepositKey.Value.IsDown())
+                WasteBin.QuickDeposit();
         }
 
         // ImageConversion.LoadImage has to go through reflection: a direct call does not compile
@@ -722,6 +735,101 @@ namespace CarturWasteManagement
                 return;
 
             SortOne(container, true);
+        }
+
+        /// <summary>
+        /// Quick deposit: every bag item whose type a nearby chest already holds goes into that chest.
+        ///
+        /// It is Sort's gather run the other way, so it reuses its pieces rather than a second mover:
+        /// Reachable (player-built, ward, in-use read off the ZDO, no vessels), MoveOne (the
+        /// MoveItemToThis loop, never CanAddItem - that ignores quality and gating a move on it
+        /// duplicates), and the ClaimOwnership + Container.Save write-back (Save has no owner check).
+        /// Same bag rule as the bag's Sort: row 0 (hotbar) and hidden rows are left alone, and so is
+        /// anything equipped or on the cursor. The chest that is open is added outright, as in Sort All,
+        /// because the open panel marks it in use and Reachable would refuse it.
+        /// </summary>
+        internal static void QuickDeposit()
+        {
+            Player player = Player.m_localPlayer;
+            float range = Plugin.GatherRange.Value;
+            if (player == null || player.IsDead() || player.IsTeleporting() || range <= 0f
+                || Game.instance == null || Typing())
+                return;
+
+            Inventory bag = player.GetInventory();
+            InventoryGui gui = InventoryGui.instance;
+            var open = gui != null && gui.IsContainerOpen() ? CurrentContainer?.GetValue(gui) as Container : null;
+            var dragged = gui != null ? DragItem?.GetValue(gui) as ItemDrop.ItemData : null;
+            long playerId = Game.instance.GetPlayerProfile().GetPlayerID();
+            Vector3 at = player.transform.position;
+            float rangeSq = range * range;
+            int visible = VisibleRows(bag);
+
+            var chests = new List<Container>();
+            if (open != null && !IsVessel(open))
+                chests.Add(open);
+            foreach (Container other in UnityEngine.Object.FindObjectsByType<Container>(FindObjectsSortMode.None))
+            {
+                if (other != null && other != open && Reachable(other, at, rangeSq, playerId))
+                    chests.Add(other);
+            }
+            chests.Sort((a, b) => Vector3.SqrMagnitude(a.transform.position - at)
+                .CompareTo(Vector3.SqrMagnitude(b.transform.position - at)));
+
+            int moved = 0;
+            foreach (Container chest in chests)
+            {
+                Inventory to = chest.GetInventory();
+                if (to == null)
+                    continue;
+
+                var held = new HashSet<string>(StringComparer.Ordinal);
+                foreach (ItemDrop.ItemData have in to.GetAllItems())
+                    if (have?.m_shared != null)
+                        held.Add(have.m_shared.m_name);
+
+                bool took = false;
+                foreach (ItemDrop.ItemData item in new List<ItemDrop.ItemData>(bag.GetAllItems()))
+                {
+                    if (item?.m_shared == null || item.m_equipped || item == dragged
+                        || item.m_gridPos.y < 1 || item.m_gridPos.y >= visible
+                        || !held.Contains(item.m_shared.m_name))
+                        continue;
+
+                    int before = item.m_stack;
+                    MoveOne(to, bag, item);
+                    if (item.m_stack < before)
+                    {
+                        moved += before - item.m_stack;
+                        took = true;
+                    }
+                }
+
+                if (!took)
+                    continue;
+
+                (ContainerNview?.GetValue(chest) as ZNetView)?.ClaimOwnership();
+                ContainerSave?.Invoke(chest, null);
+                NotifyChanged(to);
+            }
+
+            if (moved > 0)
+                NotifyChanged(bag);
+            player.Message(MessageHud.MessageType.TopLeft, moved > 0 ? $"Deposited {moved} items" : "Nothing to deposit");
+        }
+
+        // Player.TakeInput also refuses while the inventory is open, which is exactly when this key
+        // should work, so the text-entry half of it is repeated here: chat, console, the text prompt,
+        // the pause menu, map pin naming, and any focused input field (e.g. a search box).
+        private static bool Typing()
+        {
+            if ((Chat.instance != null && Chat.instance.HasFocus())
+                || global::Console.IsVisible() || TextInput.IsVisible() || Menu.IsVisible() || Minimap.InTextInput())
+                return true;
+
+            GameObject sel = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+            return sel != null && (sel.GetComponent<TMP_InputField>()?.isFocused == true
+                                   || sel.GetComponent<InputField>()?.isFocused == true);
         }
 
         /// <summary>

@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.7
+
+- **Quick deposit.** Press Y (rebindable, `Hotkeys / QuickDeposit`) to move everything in your bag that a nearby chest already holds into that chest, without opening it. The hotbar and equipped items are never touched. Uses `GatherRange`. Requested on Nexus.
+
 ## 1.2.6
 
 - In-game screenshots in the README. No code changes.
